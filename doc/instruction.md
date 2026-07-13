@@ -1,7 +1,5 @@
 # Automated Inventory & Smart Retail Agent
 
-> [中文](./instruction_cn.md)
-
 ---
 
 ## 1. Project Objectives
@@ -28,33 +26,67 @@ The system operates in a continuous, three-step cycle:
 
 ---
 
-## 3. Implementation
+## 3. Structure
 
 Due to the vast variety of products, this project inherently faces an extreme many-class classification problem. Training a model to directly distinguish between thousands of specific brands is highly challenging. Instead, this project adopts an efficient, coordinate-based "Gap Detection" approach.
 
-### I. Dataset: RP2K
-
-The project utilizes RP2K, a high-quality, clean, open-source retail dataset, applying transfer learning to avoid training a model entirely from scratch.
-
-[Download dataset](https://www.kaggle.com/datasets/khyeh0719/rp2k-dataset?resource=download).
-
-### II. Training a Binary "Gap Detection" Model
+### I. Training a Binary "Gap Detection" Model
 
 Instead of forcing the model to differentiate between hundreds of different brands (e.g., Coke vs. Pepsi), a lightweight object detection architecture like **YOLOv8** is trained to detect only two states:
 
 1. `Product`
 2. `Empty Shelf Space (Gap)`
 
-### III. Establishing a Digital Planogram
+### II. Establishing a Digital Planogram
 
 A digital map of the store layout (the planogram) is created. This database maps specific physical shelf coordinates directly to the products designated for those slots.
 
 * *Example:* `Coordinates (X: 12, Y: 45) = Brand Y Soda`
 
-### IV. Coordinate-Based Logical Reasoning
+```text
++-------------------------------------------------------+
+|  Shelf 1  [Product]       [Product]      [Product]    |
++-------------------------------------------------------+
+|  Shelf 2  [Product]      ┌───────────┐   [Product]    |
+|                          │   GAP     │                |
+|                          │ (X, Y)    │ <─── Match with| Planogram!
++--------------------------└───────────┘----------------+ 
+|  Shelf 3  [Product]       [Product]      [Product]    |
++-------------------------------------------------------+
+```
+
+### III. Coordinate-Based Logical Reasoning
 
 AI Agent code is implemented to merge the visual model's outputs with the planogram coordinates to infer missing inventory:
 
 1. The computer vision model detects an `Empty Shelf Space (Gap)` at a specific coordinate.
 2. The AI Agent queries that exact coordinate within the digital planogram.
 3. The Agent deduces: *"There is a gap at coordinates (X:12, Y:45). According to the planogram, Brand Y Soda belongs here. Therefore, Brand Y Soda is currently out of stock."*
+
+## 4. Implementation
+
+### I. Dataset Preparation
+
+#### PLAN A
+
+```text
+Step 1: SKU-110K (1000 Images)    Step 2: Local Store (200 Images)     Step 3: Combine & Train
+┌──────────────────────────┐      ┌───────────────────────────┐       ┌─────────────────────────┐
+│ • Convert products to 0  │  ──> │ • Label products as 0     │  ──>  │ Train a single YOLO     │
+│ • LEAVE GAPS UNLABELED   │      │ • Label gaps as 1         │       │ model on all 1,000      │
+└──────────────────────────┘      └───────────────────────────┘       └─────────────────────────┘
+```
+
+For the 1000 images from SKU-110K, the dataset can be downloaded using this [python script](../dataset/sku-1kimg-yolov8.py).
+
+For the 200 local stores images, use the following workflow:
+
+```text
+[ Local 200 Images ] ──> [ Pre-trained YOLOv8 Model ] ──> [ Auto-Generated Product Boxes ]
+                                                                     │
+[ Final Dataset ] <─── [ Manually Draw Only Gaps (Fast) ] <──────────┘
+```
+
+#### PLAN B
+
+Directly use a dataset with gaps labeled. The dataset can be downloaded using this [python script](../dataset/sku-gap-700img-yolov8.py).

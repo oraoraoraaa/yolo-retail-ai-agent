@@ -2,4 +2,9 @@
 .DS_Store
 
 # dataset
-dataset
+dataset/sku-1kimg-1
+dataset/sku-gap-700img-1
+
+# python
+.venv
+venv

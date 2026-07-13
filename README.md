@@ -13,16 +13,3 @@ See [instruction](doc/instruction.md).
 > ![miku_for_developers](./doc/images/banner/miku_for_developers.png)
 
 - [DEVELOPING RULES](./doc/developing_rules.md)
-
-### Dataset
-
-The dataset has been ignored to the git repository because of its giant size. Download the dataset and place it as the following file structure:
-
-```text
-dataset/
-├── rp2k_dataset/
-│   └── all/
-│       ├── test/
-│       └── train/
-└── meta.csv
-```
