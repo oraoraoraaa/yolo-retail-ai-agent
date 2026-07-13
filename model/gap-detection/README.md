@@ -58,3 +58,38 @@ python export.py \
   --weights ../../artifacts/gap-detection/train/weights/best.pt \
   --format onnx
 ```
+
+## Trained Data
+
+If training on your devices is not realistic, download trained data using the following links (google drive).
+
+- [20260714024207-yolov8m](https://drive.google.com/drive/folders/1AMQq7KjH9x6AUVZdDsB0YwjcriO1Q9QP?usp=sharing)
+
+Put download data as the following file tree:
+
+```text
+artifacts/gap-detection/train
+├── weights/
+├── args.yaml
+├── BoxF1_curve.png
+├── BoxP_curve.png
+├── BoxPR_curve.png
+├── BoxR_curve.png
+├── confusion_matrix_normalized.png
+├── confusion_matrix.png
+├── labels.jpg
+├── results.csv
+├── results.png
+├── train_batch0.jpg
+├── train_batch1.jpg
+├── train_batch2.jpg
+├── train_batch2880.jpg
+├── train_batch2881.jpg
+├── train_batch2882.jpg
+├── val_batch0_labels.jpg
+├── val_batch0_pred.jpg
+├── val_batch1_labels.jpg
+├── val_batch1_pred.jpg
+├── val_batch2_labels.jpg
+└── val_batch2_pred.jpg
+```
