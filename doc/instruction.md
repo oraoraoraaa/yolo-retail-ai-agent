@@ -36,6 +36,8 @@ Due to the vast variety of products, this project inherently faces an extreme ma
 
 The project utilizes RP2K, a high-quality, clean, open-source retail dataset, applying transfer learning to avoid training a model entirely from scratch.
 
+[Download dataset](https://www.kaggle.com/datasets/khyeh0719/rp2k-dataset?resource=download).
+
 ### II. Training a Binary "Gap Detection" Model
 
 Instead of forcing the model to differentiate between hundreds of different brands (e.g., Coke vs. Pepsi), a lightweight object detection architecture like **YOLOv8** is trained to detect only two states:
