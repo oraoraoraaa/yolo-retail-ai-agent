@@ -90,3 +90,5 @@ For the 200 local stores images, use the following workflow:
 #### PLAN B
 
 Directly use a dataset with gaps labeled. The dataset can be downloaded using this [python script](../dataset/sku-gap-700img-yolov8.py).
+
+To see more information, or train, validate, and predict using this model, navigate to [model/gap-detection](../model/gap-detection).

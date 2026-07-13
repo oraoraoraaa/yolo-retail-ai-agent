@@ -5,6 +5,10 @@
 dataset/sku-1kimg-1
 dataset/sku-gap-700img-1
 
+# training
+artifacts
+
 # python
 .venv
 venv
+__pycache__
