@@ -27,7 +27,7 @@ export interface SendChatResponse {
  */
 export async function sendChatMessage(payload: SendChatPayload): Promise<SendChatResponse> {
   if (!getApiBaseUrl()) {
-    return { reply: '' }
+    return { reply: 'Backend is not configured. Set VITE_API_BASE_URL to enable agent replies.' }
   }
 
   const hasAttachments = (payload.attachments?.length ?? 0) > 0
