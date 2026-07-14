@@ -14,6 +14,18 @@ See [instruction](doc/instruction.md).
 
 - [DEVELOPING RULES](./doc/developing_rules.md)
 
+## Frontend
+
+Shelf audit workspace UI (image upload + agent chat). Backend responses are stubbed until the API is ready.
+
+See [frontend/README.md](frontend/README.md).
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ## Roboflow API Key
 
 You would need the Roboflow API key to download the dataset using the scripts inside the `dataset` folder:

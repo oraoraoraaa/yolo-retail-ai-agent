@@ -1,0 +1,37 @@
+:root {
+  /* Retail ops palette — cool slate + teal, light workspace */
+  --color-bg-0: #e7eef2;
+  --color-bg-1: #f4f7f5;
+  --color-surface: rgba(255, 255, 255, 0.78);
+  --color-surface-strong: #ffffff;
+  --color-ink: #142028;
+  --color-ink-muted: #4d5d68;
+  --color-ink-soft: #6d7d88;
+  --color-line: rgba(20, 32, 40, 0.12);
+  --color-accent: #0b7a6e;
+  --color-accent-strong: #065f56;
+  --color-accent-soft: rgba(11, 122, 110, 0.12);
+  --color-warn: #9a5b12;
+  --color-danger: #9b2c2c;
+  --color-user-bubble: #0b7a6e;
+  --color-assistant-bubble: #eef3f1;
+
+  --font-display: 'Sora', 'Segoe UI', sans-serif;
+  --font-body: 'Figtree', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+
+  --shadow-soft: 0 18px 40px rgba(20, 32, 40, 0.08);
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --panel-max: 1440px;
+  --header-height: 4.25rem;
+}

@@ -1,0 +1,245 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: calc(100vh - 3rem);
+  padding: var(--space-5);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.92rem;
+}
+
+.dropzone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  padding: var(--space-5);
+  border: 1.5px dashed rgba(11, 122, 110, 0.45);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, rgba(11, 122, 110, 0.06), transparent 70%),
+    var(--color-surface-strong);
+  text-align: center;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.dropzoneActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  transform: translateY(-1px);
+}
+
+.fileInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dropTitle {
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+}
+
+.dropHint {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.88rem;
+}
+
+.previewWrap {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.preview {
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  background: #0f171c;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.fileName {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.primaryButton,
+.ghostButton {
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.95rem;
+  border: 1px solid transparent;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.primaryButton {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--color-accent-strong);
+}
+
+.primaryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghostButton {
+  background: transparent;
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}
+
+.ghostButton:hover:not(:disabled) {
+  background: rgba(20, 32, 40, 0.04);
+}
+
+.results {
+  display: grid;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.box {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-strong);
+  padding: var(--space-4);
+}
+
+.actionBox {
+  min-height: 88px;
+}
+
+.explanationBox {
+  min-height: 180px;
+  flex: 1;
+}
+
+.boxLabel {
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.boxBody {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--color-ink);
+}
+
+.boxEmpty {
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.statusLine {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--color-ink-muted);
+}
+
+.progressPanel {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid rgba(11, 122, 110, 0.22);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--color-accent-soft);
+}
+
+.progressHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-accent-strong);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.progressTrack {
+  height: 0.45rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(11, 122, 110, 0.14);
+}
+
+.progressBar {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  animation: progressSweep 1.15s ease-in-out infinite;
+}
+
+.errorLine {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.9rem;
+}
+
+@keyframes progressSweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  50% {
+    transform: translateX(70%);
+  }
+  100% {
+    transform: translateX(230%);
+  }
+}

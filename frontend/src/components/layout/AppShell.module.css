@@ -1,0 +1,126 @@
+.shell {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: row;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  width: 18rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border-right: 1px solid var(--color-line);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+}
+
+.brandBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.tagline {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+}
+
+.nav {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.navItem {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 0.95rem;
+  background: transparent;
+  color: var(--color-ink);
+  text-align: left;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.navItem:hover {
+  border-color: var(--color-line);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.navItemActive {
+  border-color: rgba(11, 122, 110, 0.24);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.navLabel,
+.navDescription {
+  display: block;
+}
+
+.navLabel {
+  font-weight: 700;
+}
+
+.navDescription {
+  margin-top: 0.15rem;
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+}
+
+.main {
+  flex: 1;
+  width: min(100%, var(--panel-max));
+  margin: 0;
+  padding: var(--space-5);
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .shell {
+    flex-direction: column;
+  }
+
+  .header {
+    position: static;
+    width: 100%;
+    min-height: 0;
+    padding: var(--space-4);
+    border-right: none;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .nav {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+  }
+
+  .navItem {
+    min-width: 10.5rem;
+  }
+
+  .main {
+    padding: var(--space-4);
+  }
+}
