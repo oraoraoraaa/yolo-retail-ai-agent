@@ -17,8 +17,8 @@ const AUDIT_PATH = '/api/v1/audit/analyze'
 export async function analyzeShelfImage(file: File): Promise<AuditAnalysisResult> {
   if (!getApiBaseUrl()) {
     return {
-      suggestedAction: '',
-      explanation: '',
+      suggestedAction: 'Backend is not configured.',
+      explanation: 'Set VITE_API_BASE_URL to enable shelf-image analysis.',
     }
   }
 
