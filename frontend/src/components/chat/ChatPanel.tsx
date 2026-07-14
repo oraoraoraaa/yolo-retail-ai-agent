@@ -104,10 +104,21 @@ export function ChatPanel({ messages, status, errorMessage, onSendMessage }: Cha
       })
     }
 
-    if (nextAttachments.length > 0) {
-      setLocalError(null)
-      setAttachments((previous) => [...previous, ...nextAttachments].slice(0, 4))
+if (nextAttachments.length > 0) {
+  setLocalError(null)
+  setAttachments((previous) => {
+    const combined = [...previous, ...nextAttachments]
+    const kept = combined.slice(0, 4)
+
+    for (const dropped of combined.slice(4)) {
+      if (dropped.previewUrl) {
+        URL.revokeObjectURL(dropped.previewUrl)
+      }
     }
+
+    return kept
+  })
+}
   }
 
   function removeAttachment(attachmentId: string): void {
