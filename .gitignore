@@ -1,6 +1,16 @@
 # macOS
 .DS_Store
 
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
 # dataset
 dataset/sku-1kimg-1
 dataset/sku-gap-700img-1
@@ -19,3 +29,18 @@ frontend/dist
 frontend/.env
 frontend/.env.*.local
 frontend/pnpm-lock.yaml
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+frontend/*.local
+frontend/.env
+frontend/.env.*.local
+
+# frontend logs
+frontend/logs
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
