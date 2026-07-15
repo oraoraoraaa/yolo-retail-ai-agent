@@ -44,3 +44,22 @@ frontend/yarn-debug.log*
 frontend/yarn-error.log*
 frontend/pnpm-debug.log*
 frontend/lerna-debug.log*
+
+# backend
+backend/.env
+backend/.env.*.local
+backend/pnpm-lock.yaml
+backend/node_modules
+backend/dist
+backend/dist-ssr
+backend/*.local
+backend/.env
+backend/.env.*.local
+backend/logs
+backend/*.log
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+backend/pnpm-debug.log*
+backend/lerna-debug.log*
+backend/.next
