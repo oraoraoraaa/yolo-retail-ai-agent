@@ -1,7 +1,7 @@
 [project]
 name = "model"
 version = "0.1.0"
-description = "Light Python snippets to call a trained model in roboflow."
+description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []

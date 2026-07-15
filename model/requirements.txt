@@ -1,0 +1,2 @@
+inference-gpu
+opencv-python
