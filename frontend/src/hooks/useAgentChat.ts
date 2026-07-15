@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { sendChatMessage } from '@/api'
 import { createClientId } from '@/lib/id'
@@ -12,36 +12,39 @@ const INITIAL_STATE: ChatPanelState = {
 
 export function useAgentChat() {
   const [state, setState] = useState<ChatPanelState>(INITIAL_STATE)
+  const isSendingRef = useRef(false)
 
   async function sendMessage(rawContent: string, attachments: ChatOutgoingAttachment[] = []): Promise<void> {
     const content = rawContent.trim()
-    if ((!content && attachments.length === 0) || state.status === 'sending') {
+    if ((!content && attachments.length === 0) || isSendingRef.current || state.status === 'sending') {
       return
     }
 
-    const userMessage: ChatMessage = {
-      id: createClientId('msg'),
-      role: 'user',
-      content,
-      createdAt: new Date().toISOString(),
-      attachments: attachments.map((attachment) => ({
-        id: attachment.id,
-        name: attachment.name,
-        type: attachment.type,
-        size: attachment.size,
-        previewUrl: attachment.previewUrl,
-      })),
-    }
-
-    const history = [...state.messages, userMessage]
-
-    setState({
-      messages: history,
-      status: 'sending',
-      errorMessage: null,
-    })
+    isSendingRef.current = true
 
     try {
+      const userMessage: ChatMessage = {
+        id: createClientId('msg'),
+        role: 'user',
+        content,
+        createdAt: new Date().toISOString(),
+        attachments: attachments.map((attachment) => ({
+          id: attachment.id,
+          name: attachment.name,
+          type: attachment.type,
+          size: attachment.size,
+          previewUrl: attachment.previewUrl,
+        })),
+      }
+
+      const history = [...state.messages, userMessage]
+
+      setState({
+        messages: history,
+        status: 'sending',
+        errorMessage: null,
+      })
+
       const { reply } = await sendChatMessage({
         message: content,
         history,
@@ -67,6 +70,8 @@ export function useAgentChat() {
         status: 'error',
         errorMessage: message,
       }))
+    } finally {
+      isSendingRef.current = false
     }
   }
 
