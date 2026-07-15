@@ -26,6 +26,7 @@ train/yolov8m.pt
 .venv
 venv
 __pycache__
+uv.lock
 
 # frontend
 frontend/node_modules
