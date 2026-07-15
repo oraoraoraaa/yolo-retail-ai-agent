@@ -1,0 +1,16 @@
+# Core web framework
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+
+# Image handling for shelf-audit uploads
+pillow>=10.0
+
+# Optional: LLM agent over an OpenAI-compatible endpoint.
+# Falls back to a deterministic mock reply when no API key is configured.
+httpx[socks]>=0.27
+
+# Optional (heavy): real YOLOv8 gap-detection inference.
+# Install separately when you want real detections:
+#   pip install -r ../model/gap-detection/requirements.txt
+# ultralytics

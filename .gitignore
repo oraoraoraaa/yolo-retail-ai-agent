@@ -48,3 +48,22 @@ frontend/yarn-debug.log*
 frontend/yarn-error.log*
 frontend/pnpm-debug.log*
 frontend/lerna-debug.log*
+
+# agent
+agent/.env
+agent/.env.*.local
+agent/pnpm-lock.yaml
+agent/node_modules
+agent/dist
+agent/dist-ssr
+agent/*.local
+agent/.env
+agent/.env.*.local
+agent/logs
+agent/*.log
+agent/npm-debug.log*
+agent/yarn-debug.log*
+agent/yarn-error.log*
+agent/pnpm-debug.log*
+agent/lerna-debug.log*
+agent/.next
