@@ -3,16 +3,28 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import DEFAULT_DATA_YAML, DEFAULT_RUNS_DIR, DEFAULT_WEIGHTS, ensure_path
+from common import (
+    DEFAULT_DATASET_DIR,
+    DEFAULT_RUNS_DIR,
+    DEFAULT_WEIGHTS,
+    ensure_path,
+    resolve_data_yaml,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train a YOLOv8 gap detector.")
+    parser = argparse.ArgumentParser(description="Train a YOLOv8 detector.")
+    parser.add_argument(
+        "--dataset-dir",
+        type=Path,
+        default=DEFAULT_DATASET_DIR,
+        help="Root directory of the YOLO dataset.",
+    )
     parser.add_argument(
         "--data",
         type=Path,
-        default=DEFAULT_DATA_YAML,
-        help="Path to the YOLO dataset YAML.",
+        required=True,
+        help="Dataset YAML file, relative to --dataset-dir or an absolute path.",
     )
     parser.add_argument(
         "--model", default=DEFAULT_WEIGHTS, help="Base YOLOv8 checkpoint to fine-tune."
@@ -53,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
 
-    data_yaml = ensure_path(args.data)
+    data_yaml = resolve_data_yaml(args.dataset_dir, args.data)
     args.project.mkdir(parents=True, exist_ok=True)
 
     try:

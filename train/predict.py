@@ -3,13 +3,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import DEFAULT_DATA_YAML, DEFAULT_RUNS_DIR, DEFAULT_SOURCE_DIR, ensure_path
+from common import (
+    DEFAULT_DATASET_DIR,
+    DEFAULT_RUNS_DIR,
+    ensure_path,
+    resolve_data_yaml,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Run gap detection inference with YOLOv8."
-    )
+    parser = argparse.ArgumentParser(description="Run YOLOv8 inference.")
     parser.add_argument(
         "--weights",
         type=Path,
@@ -17,16 +20,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to trained weights, e.g. best.pt.",
     )
     parser.add_argument(
-        "--source",
+        "--dataset-dir",
         type=Path,
-        default=DEFAULT_SOURCE_DIR,
-        help="Image, directory, or video source.",
+        default=DEFAULT_DATASET_DIR,
+        help="Root directory of the YOLO dataset.",
     )
     parser.add_argument(
         "--data",
         type=Path,
-        default=DEFAULT_DATA_YAML,
-        help="Dataset YAML for class names.",
+        required=True,
+        help="Dataset YAML file, relative to --dataset-dir or an absolute path.",
+    )
+    parser.add_argument(
+        "--source",
+        type=Path,
+        required=True,
+        help="Image, directory, or video source.",
     )
     parser.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
     parser.add_argument(
@@ -63,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     weights = ensure_path(args.weights)
+    data_yaml = resolve_data_yaml(args.dataset_dir, args.data)
     source = ensure_path(args.source) if args.source.exists() else args.source
     args.project.mkdir(parents=True, exist_ok=True)
 
@@ -76,6 +86,7 @@ def main() -> None:
     model = YOLO(str(weights))
     results = model.predict(
         source=str(source),
+        data=str(data_yaml),
         imgsz=args.imgsz,
         conf=args.conf,
         iou=args.iou,

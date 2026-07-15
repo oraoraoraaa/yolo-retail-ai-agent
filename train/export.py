@@ -7,9 +7,7 @@ from common import ensure_path
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Export a trained YOLOv8 gap detector."
-    )
+    parser = argparse.ArgumentParser(description="Export a trained YOLOv8 detector.")
     parser.add_argument(
         "--weights",
         type=Path,

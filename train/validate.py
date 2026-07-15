@@ -3,13 +3,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import DEFAULT_DATA_YAML, DEFAULT_RUNS_DIR, ensure_path
+from common import (
+    DEFAULT_DATASET_DIR,
+    DEFAULT_RUNS_DIR,
+    ensure_path,
+    resolve_data_yaml,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Validate a trained YOLOv8 gap detector."
-    )
+    parser = argparse.ArgumentParser(description="Validate a trained YOLOv8 detector.")
     parser.add_argument(
         "--weights",
         type=Path,
@@ -17,10 +20,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to trained weights, e.g. best.pt.",
     )
     parser.add_argument(
+        "--dataset-dir",
+        type=Path,
+        default=DEFAULT_DATASET_DIR,
+        help="Root directory of the YOLO dataset.",
+    )
+    parser.add_argument(
         "--data",
         type=Path,
-        default=DEFAULT_DATA_YAML,
-        help="Dataset YAML used during validation.",
+        required=True,
+        help="Dataset YAML file, relative to --dataset-dir or an absolute path.",
     )
     parser.add_argument(
         "--split",
@@ -46,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     weights = ensure_path(args.weights)
-    data_yaml = ensure_path(args.data)
+    data_yaml = resolve_data_yaml(args.dataset_dir, args.data)
     args.project.mkdir(parents=True, exist_ok=True)
 
     try:

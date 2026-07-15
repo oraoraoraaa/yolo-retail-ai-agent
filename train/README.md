@@ -1,30 +1,29 @@
 # Gap Detection
 
-This folder contains the YOLOv8 scripts for training a one-class detector that finds `gap` regions in shelf images.
+This folder contains reusable YOLOv8 scripts for training, validating, predicting, and exporting object detection models on any YOLO-format dataset.
 
 ## Dataset
 
-The scripts expect the dataset at:
+Provide the dataset root and dataset YAML explicitly when running the scripts.
 
-- `dataset/sku-gap-700img-1/data.yaml`
-
-The class name should be `gap`.
+The YAML can be relative to the dataset root, for example `data.yaml`.
 
 ## Install
 
 Install the model dependency from this folder:
 
 ```bash
-pip install -r model/gap-detection/requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Train
 
 ```bash
 python train.py \
-  --data ../../dataset/sku-gap-700img-1/data.yaml \
-  --model yolov8n.pt \
-  --epochs 100 \
+  --dataset-dir <the_dataset_dir> \
+  --data data.yaml \
+  --model yolo11m.pt \
+  --epochs 300 \
   --imgsz 640 \
   --batch 16
 ```
@@ -35,7 +34,9 @@ Training artifacts are written to `artifacts/gap-detection/train` by default.
 
 ```bash
 python validate.py \
-  --weights ../../artifacts/gap-detection/train/weights/best.pt \
+  --dataset-dir <the_dataset_dir> \
+  --data data.yaml \
+  --weights <the_artifact_path>/train/weights/best.pt \
   --split val
 ```
 
@@ -45,23 +46,27 @@ Run inference on a folder or single image and save annotated outputs with boxes:
 
 ```bash
 python predict.py \
-  --weights ../../artifacts/gap-detection/train/weights/best.pt \
-  --source ../../dataset/sku-gap-700img-1/valid/images
+  --dataset-dir <the_dataset_dir> \
+  --data data.yaml \
+  --weights <the_artifact_path>/train/weights/best.pt \
+  --source <the_dataset_dir>/valid/images
 ```
 
-The resulting images are written under `artifacts/gap-detection/predict` by default.
+The resulting images are written under `<the_artifact_path>/predict` by default.
 
 ## Export
 
 ```bash
 python export.py \
-  --weights ../../artifacts/gap-detection/train/weights/best.pt \
+  --weights <the_artifact_path>/train/weights/best.pt \
   --format onnx
 ```
 
 ## Trained Data
 
 If training on your devices is not realistic, download trained data using the following links (google drive).
+
+### sku-gap-700img-1
 
 - [20260714024207-yolov8m](https://drive.google.com/drive/folders/1AMQq7KjH9x6AUVZdDsB0YwjcriO1Q9QP?usp=sharing)
 
