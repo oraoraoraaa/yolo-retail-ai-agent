@@ -5,10 +5,9 @@ from pathlib import Path
 
 from common import (
     DEFAULT_DATASET_DIR,
-    DEFAULT_RUNS_DIR,
     DEFAULT_WEIGHTS,
-    ensure_path,
     resolve_data_yaml,
+    resolve_project_dir,
 )
 
 
@@ -43,8 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--project",
         type=Path,
-        default=DEFAULT_RUNS_DIR,
-        help="Directory where training runs are stored.",
+        default=None,
+        help="Directory where training runs are stored. Defaults to artifacts/<dataset-name>.",
     )
     parser.add_argument("--name", default="train", help="Training run name.")
     parser.add_argument(
@@ -66,7 +65,8 @@ def main() -> None:
     args = build_parser().parse_args()
 
     data_yaml = resolve_data_yaml(args.dataset_dir, args.data)
-    args.project.mkdir(parents=True, exist_ok=True)
+    project_dir = resolve_project_dir(args.dataset_dir, args.project)
+    project_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         from ultralytics import YOLO
@@ -83,7 +83,7 @@ def main() -> None:
         batch=args.batch,
         device=args.device,
         workers=args.workers,
-        project=str(args.project),
+        project=str(project_dir),
         name=args.name,
         patience=args.patience,
         seed=args.seed,
@@ -91,7 +91,7 @@ def main() -> None:
         resume=args.resume,
     )
 
-    save_dir = Path(getattr(results, "save_dir", args.project / args.name))
+    save_dir = Path(getattr(results, "save_dir", project_dir / args.name))
     print(f"Training complete. Artifacts saved to: {save_dir}")
     print(f"Best weights: {save_dir / 'weights' / 'best.pt'}")
 
