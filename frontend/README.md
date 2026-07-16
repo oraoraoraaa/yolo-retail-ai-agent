@@ -5,8 +5,8 @@ React + TypeScript + Vite workspace UI for shelf image audit and agent chat.
 ## Features
 
 - **Left panel:** upload a local shelf image; display backend `suggestedAction` (small) and `explanation` (large).
-- **Right panel:** chat with the retail agent; message generation is handled by the backend.
-- **API stubs:** when `VITE_API_BASE_URL` is empty, audit and chat responses stay empty so UI can be developed without a server.
+- **Right panel:** chat with the retail agent; assistant replies render as Markdown (bold, lists, headings, code, tables via GFM).
+- **API stubs:** when `VITE_API_BASE_URL` is empty, chat returns a sample Markdown reply so formatting can be verified offline.
 
 ## Project layout
 
@@ -41,11 +41,11 @@ Vite also proxies `/api` → `http://localhost:8000` during local development wh
 
 ## Setup
 
-Requires Node.js 20+.
+Requires Node.js 20+. Markdown chat rendering uses `react-markdown` + `remark-gfm` (installed into this frontend Node environment only).
 
 ```bash
 cd frontend
-npm install
+npm ci   # or: npm install
 npm run dev
 ```
 

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type Key
 import { createClientId } from '@/lib/id'
 import type { ChatMessage, ChatOutgoingAttachment, ChatRequestStatus } from '@/types'
 
+import { MarkdownContent } from './MarkdownContent'
 import styles from './ChatPanel.module.css'
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
@@ -171,9 +172,15 @@ if (nextAttachments.length > 0) {
                 <div
                   className={`${styles.bubble} ${isUser ? styles.bubbleUser : styles.bubbleAssistant} ${
                     isEmptyAssistant ? styles.bubbleEmpty : ''
-                  }`}
+                  } ${!isUser && !isEmptyAssistant ? styles.bubbleMarkdown : ''}`}
                 >
-                  {isEmptyAssistant ? 'Waiting for backend response...' : message.content}
+                  {isEmptyAssistant ? (
+                    'Waiting for backend response...'
+                  ) : isUser ? (
+                    message.content
+                  ) : (
+                    <MarkdownContent content={message.content} />
+                  )}
                   {message.attachments && message.attachments.length > 0 ? (
                     <div className={styles.messageAttachments}>
                       {message.attachments.map((attachment) => (
