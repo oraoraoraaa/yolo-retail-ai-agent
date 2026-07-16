@@ -1,12 +1,20 @@
 # Gap Detection
 
-This folder contains reusable YOLOv8 scripts for training, validating, predicting, and exporting object detection models on any YOLO-format dataset.
+This folder contains reusable YOLO scripts for training, validating, predicting, and exporting object detection models on YOLO-format shelf datasets.
 
 ## Dataset
 
 Provide the dataset root and dataset YAML explicitly when running the scripts.
 
 The YAML can be relative to the dataset root, for example `data.yaml`.
+
+Roboflow exports can contain polygon/segmentation labels even when you want a detector. The training, validation, and prediction scripts prepare a derived detection dataset by default under the run artifacts directory:
+
+- images are linked to the source dataset
+- polygon labels are converted to YOLO `class x_center y_center width height` boxes
+- the source dataset is left unchanged
+
+For `dataset/goods-and-gaps-chinese-2`, this matters: most labels are polygons, and the dataset is small and imbalanced (`gap` has far fewer boxes than `product`). High image size is important because shelf products and empty gaps are small.
 
 ## Install
 
@@ -20,23 +28,36 @@ pip install -r requirements.txt
 
 ```bash
 python train.py \
-  --dataset-dir <the_dataset_dir> \
-  --data data.yaml \
+  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
   --model yolo11m.pt \
   --epochs 300 \
-  --imgsz 640 \
-  --batch 16
+  --imgsz 1024 \
+  --batch -1 \
+  --cache
 ```
 
-Training artifacts are written to `artifacts/gap-detection/train` by default.
+Training artifacts are written to `artifacts/<dataset-name>/train` by default. The prepared detection dataset is written to `artifacts/<dataset-name>/_prepared_detection`.
+
+If YOLO11m underperforms Roboflow YOLO11n on this 85-image dataset, also train a YOLO11n or YOLO11s baseline locally with the same command. A larger model can overfit a small dataset, so bigger is not automatically better.
+
+Useful options:
+
+```bash
+python train.py \
+  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
+  --model yolo11n.pt \
+  --epochs 300 \
+  --imgsz 1024 \
+  --batch -1
+```
 
 ## Validate
 
 ```bash
 python validate.py \
-  --dataset-dir <the_dataset_dir> \
+  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
   --data data.yaml \
-  --weights <the_artifact_path>/train/weights/best.pt \
+  --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
   --split val
 ```
 
@@ -46,10 +67,10 @@ Run inference on a folder or single image and save annotated outputs with boxes:
 
 ```bash
 python predict.py \
-  --dataset-dir <the_dataset_dir> \
+  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
   --data data.yaml \
-  --weights <the_artifact_path>/train/weights/best.pt \
-  --source <the_dataset_dir>/valid/images
+  --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --source ../dataset/goods-and-gaps-chinese-2/valid/images
 ```
 
 The resulting images are written under `<the_artifact_path>/predict` by default.
@@ -58,7 +79,7 @@ The resulting images are written under `<the_artifact_path>/predict` by default.
 
 ```bash
 python export.py \
-  --weights <the_artifact_path>/train/weights/best.pt \
+  --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
   --format onnx
 ```
 

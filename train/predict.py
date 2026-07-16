@@ -7,12 +7,13 @@ from common import (
     DEFAULT_DATASET_DIR,
     DEFAULT_RUNS_DIR,
     ensure_path,
+    prepare_detection_dataset,
     resolve_data_yaml,
 )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run YOLOv8 inference.")
+    parser = argparse.ArgumentParser(description="Run YOLO inference.")
     parser.add_argument(
         "--weights",
         type=Path,
@@ -28,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--data",
         type=Path,
-        required=True,
+        default=Path("data.yaml"),
         help="Dataset YAML file, relative to --dataset-dir or an absolute path.",
     )
     parser.add_argument(
@@ -37,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Image, directory, or video source.",
     )
-    parser.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
+    parser.add_argument("--imgsz", type=int, default=1024, help="Inference image size.")
     parser.add_argument(
         "--conf", type=float, default=0.25, help="Confidence threshold."
     )
@@ -66,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-det", type=int, default=300, help="Maximum detections per image."
     )
+    parser.add_argument(
+        "--no-prepare-detection",
+        action="store_true",
+        help="Use the source dataset YAML directly instead of prepared detection labels.",
+    )
     return parser
 
 
@@ -74,7 +80,13 @@ def main() -> None:
     weights = ensure_path(args.weights)
     data_yaml = resolve_data_yaml(args.dataset_dir, args.data)
     source = ensure_path(args.source) if args.source.exists() else args.source
-    args.project.mkdir(parents=True, exist_ok=True)
+    project_dir = args.project.expanduser().resolve()
+    project_dir.mkdir(parents=True, exist_ok=True)
+    prediction_data_yaml = (
+        data_yaml
+        if args.no_prepare_detection
+        else prepare_detection_dataset(data_yaml, project_dir / "_prepared_detection")
+    )
 
     try:
         from ultralytics import YOLO
@@ -86,12 +98,12 @@ def main() -> None:
     model = YOLO(str(weights))
     results = model.predict(
         source=str(source),
-        data=str(data_yaml),
+        data=str(prediction_data_yaml),
         imgsz=args.imgsz,
         conf=args.conf,
         iou=args.iou,
         device=args.device,
-        project=str(args.project),
+        project=str(project_dir),
         name=args.name,
         exist_ok=True,
         save=True,
@@ -101,7 +113,7 @@ def main() -> None:
         max_det=args.max_det,
     )
 
-    save_dir = Path(results[0].save_dir) if results else args.project / args.name
+    save_dir = Path(results[0].save_dir) if results else project_dir / args.name
     print(f"Prediction artifacts saved to: {save_dir}")
 
 

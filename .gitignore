@@ -17,10 +17,12 @@ dataset/sku-gap-700img-1
 dataset/goods-and-gaps-chinese-2
 
 # training
-artifacts
+train/artifacts
 train/yolo11m.pt
 train/yolo26n.pt
 train/yolov8m.pt
+train/yolo11n.pt
+train/runs
 
 # python
 .venv
