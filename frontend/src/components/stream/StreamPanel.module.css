@@ -1,0 +1,245 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: calc(100vh - 3rem);
+  padding: var(--space-5);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.92rem;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0 0.75rem;
+  background: var(--color-surface-strong);
+  color: var(--color-ink-muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.statusLive {
+  border-color: rgba(11, 122, 110, 0.28);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.statusDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.urlLabel {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-ink-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.urlInput {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.8rem;
+  background: var(--color-surface-strong);
+  color: var(--color-ink);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.primaryButton,
+.ghostButton {
+  min-height: 2.75rem;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.9rem;
+  font-weight: 700;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.primaryButton {
+  border: 1px solid transparent;
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.primaryButton:hover {
+  background: var(--color-accent-strong);
+}
+
+.ghostButton {
+  border: 1px solid var(--color-line);
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.ghostButton:hover:not(:disabled) {
+  background: rgba(20, 32, 40, 0.04);
+}
+
+.ghostButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.viewer {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 28rem;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: #0f171c;
+}
+
+.streamImage {
+  width: 100%;
+  height: 100%;
+  min-height: 28rem;
+  object-fit: contain;
+  background: #0f171c;
+}
+
+.placeholder {
+  max-width: 30rem;
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.placeholderTitle {
+  margin: 0 0 var(--space-2);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.placeholderCopy {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--space-3);
+  background: rgba(15, 23, 28, 0.72);
+  color: #fff;
+  font-weight: 700;
+}
+
+.spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0 auto;
+  border: 3px solid rgba(255, 255, 255, 0.24);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: spin 850ms linear infinite;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.infoBox {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--color-surface-strong);
+}
+
+.infoBox h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 0.9rem;
+}
+
+.infoBox p {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+}
+
+.infoBox code {
+  font-family: var(--font-mono);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 860px) {
+  .panel {
+    padding: var(--space-4);
+  }
+
+  .header,
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+
+  .actions,
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    display: grid;
+  }
+}
