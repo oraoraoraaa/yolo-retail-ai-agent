@@ -1,0 +1,23 @@
+[project]
+name = "yolo-retail-train"
+version = "0.1.0"
+description = "Train / validate / predict / export YOLO shelf gap-detection models."
+requires-python = ">=3.11"
+dependencies = [
+    "ultralytics>=8.3.0",
+    "onnx>=1.17.0",
+    "onnxruntime>=1.19.0",
+    "onnxslim>=0.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

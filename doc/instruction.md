@@ -97,9 +97,9 @@ Train / validate / predict / export scripts live under [`train/`](../train/):
 
 ```bash
 cd train
-pip install -r requirements.txt
-python train.py --dataset-dir ../dataset/goods-and-gaps-chinese-2 --model yolo11n.pt
-python export.py --weights artifacts/<dataset>/train/weights/best.pt --format onnx
+uv sync
+uv run python train.py --dataset-dir ../dataset/goods-and-gaps-chinese-2 --model yolo11n.pt
+uv run python export.py --weights artifacts/<dataset>/train/weights/best.pt --format onnx
 ```
 
 Exported local weights used by the app are stored under:

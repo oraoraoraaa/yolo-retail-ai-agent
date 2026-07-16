@@ -1,0 +1,16 @@
+[project]
+name = "yolo-retail-dataset"
+version = "0.1.0"
+description = "Helpers to download Roboflow shelf datasets for YOLO training."
+requires-python = ">=3.11"
+dependencies = [
+    "roboflow>=1.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]

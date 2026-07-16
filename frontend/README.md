@@ -71,8 +71,8 @@ For agent chat / LLM narratives:
 
 ```bash
 cd ../agent
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uv sync
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
 Other scripts:

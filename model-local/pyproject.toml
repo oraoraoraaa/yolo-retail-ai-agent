@@ -1,14 +1,25 @@
 [project]
 name = "model-local"
 version = "0.1.0"
-description = "Script to run real-time streaming detection using a local weight file."
+description = "Local ONNX/YOLO vision service for shelf streaming and single-image detection."
 requires-python = ">=3.11"
 dependencies = [
     "onnx>=1.17.0",
     "onnxruntime>=1.19.0; sys_platform != 'win32' or platform_machine != 'ARM64'",
     "onnxruntime-gpu>=1.19.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "opencv-python-headless>=4.10.0",
-    "pytest>=8.0",
     "supervision>=0.25.0",
     "ultralytics>=8.3.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

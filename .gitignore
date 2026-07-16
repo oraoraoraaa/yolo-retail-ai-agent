@@ -11,12 +11,12 @@
 *.sln
 *.sw?
 
-# dataset
+# dataset downloads
 dataset/sku-1kimg-1
 dataset/sku-gap-700img-1
 dataset/goods-and-gaps-chinese-2
 
-# training
+# training artifacts / base checkpoints
 train/artifacts
 train/yolo11m.pt
 train/yolo26n.pt
@@ -28,22 +28,21 @@ train/runs
 .venv
 venv
 __pycache__
-uv.lock
+.pytest_cache
+.coverage
+htmlcov
+*.egg-info
+.ruff_cache
+.mypy_cache
 
 # frontend
-frontend/node_modules
-frontend/dist
-frontend/.env
-frontend/.env.*.local
-frontend/pnpm-lock.yaml
 frontend/node_modules
 frontend/dist
 frontend/dist-ssr
 frontend/*.local
 frontend/.env
 frontend/.env.*.local
-
-# frontend logs
+frontend/pnpm-lock.yaml
 frontend/logs
 frontend/*.log
 frontend/npm-debug.log*
@@ -52,29 +51,8 @@ frontend/yarn-error.log*
 frontend/pnpm-debug.log*
 frontend/lerna-debug.log*
 
-# agent
+# agent secrets / logs
 agent/.env
 agent/.env.*.local
-agent/pnpm-lock.yaml
-agent/node_modules
-agent/dist
-agent/dist-ssr
-agent/*.local
 agent/logs
 agent/*.log
-agent/npm-debug.log*
-agent/yarn-debug.log*
-agent/yarn-error.log*
-agent/pnpm-debug.log*
-agent/lerna-debug.log*
-agent/.next
-agent/.pytest_cache
-agent/.coverage
-agent/htmlcov
-
-# model-local tests / caches
-model-local/.pytest_cache
-model-local/tests/__pycache__
-
-# roboflow local cache
-model-roboflow/model-cache/

@@ -52,7 +52,7 @@ export const UI_TEXT = {
     },
     chat: {
       title: 'Agent chat',
-      subtitle: 'Ask about shelf gaps, planogram mismatch, or replenishment. Replies are produced by the backend.',
+      subtitle: 'Ask about shelf gaps, planogram mismatch, or replenishment.',
       emptyTitle: 'How can I help?',
       recommendedQuestions: 'Recommended questions',
       waiting: 'Waiting for backend response...',
@@ -171,7 +171,7 @@ export const UI_TEXT = {
     },
     chat: {
       title: '智能体对话',
-      subtitle: '询问货架空位、计划图不匹配或补货问题。回复由后端生成。',
+      subtitle: '询问货架空位、计划图不匹配或补货问题。',
       emptyTitle: '有什么我能帮你的吗？',
       recommendedQuestions: '推荐问题',
       waiting: '等待后端响应...',

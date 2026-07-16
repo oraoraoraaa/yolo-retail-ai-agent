@@ -1,33 +1,28 @@
 # Gap Detection
 
-This folder contains reusable YOLO scripts for training, validating, predicting, and exporting object detection models on YOLO-format shelf datasets.
+Reusable YOLO scripts for training, validating, predicting, and exporting shelf
+gap-detection models.
 
 ## Dataset
 
-Provide the dataset root and dataset YAML explicitly when running the scripts.
+Provide the dataset root and dataset YAML when running scripts (YAML may be
+relative to the dataset root, e.g. `data.yaml`).
 
-The YAML can be relative to the dataset root, for example `data.yaml`.
+Roboflow exports may contain polygon labels. By default the scripts prepare a
+derived detection dataset (images linked, polygons → YOLO boxes) under the run
+artifacts directory, leaving the source dataset unchanged.
 
-Roboflow exports can contain polygon/segmentation labels even when you want a detector. The training, validation, and prediction scripts prepare a derived detection dataset by default under the run artifacts directory:
-
-- images are linked to the source dataset
-- polygon labels are converted to YOLO `class x_center y_center width height` boxes
-- the source dataset is left unchanged
-
-For `dataset/goods-and-gaps-chinese-2`, this matters: most labels are polygons, and the dataset is small and imbalanced (`gap` has far fewer boxes than `product`). High image size is important because shelf products and empty gaps are small.
-
-## Install
-
-Install the model dependency from this folder:
+## Install (uv)
 
 ```bash
-pip install -r requirements.txt
+cd train
+uv sync
 ```
 
 ## Train
 
 ```bash
-python train.py \
+uv run python train.py \
   --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
   --model yolo11m.pt \
   --epochs 300 \
@@ -36,14 +31,13 @@ python train.py \
   --cache
 ```
 
-Training artifacts are written to `artifacts/<dataset-name>/train` by default. The prepared detection dataset is written to `artifacts/<dataset-name>/_prepared_detection`.
+Artifacts: `artifacts/<dataset-name>/train`  
+Prepared detection data: `artifacts/<dataset-name>/_prepared_detection`
 
-If YOLO11m underperforms Roboflow YOLO11n on this 85-image dataset, also train a YOLO11n or YOLO11s baseline locally with the same command. A larger model can overfit a small dataset, so bigger is not automatically better.
-
-Useful options:
+Smaller baseline example:
 
 ```bash
-python train.py \
+uv run python train.py \
   --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
   --model yolo11n.pt \
   --epochs 300 \
@@ -54,7 +48,7 @@ python train.py \
 ## Validate
 
 ```bash
-python validate.py \
+uv run python validate.py \
   --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
   --data data.yaml \
   --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
@@ -63,47 +57,38 @@ python validate.py \
 
 ## Predict
 
-Run inference on a folder or single image and save annotated outputs with boxes:
-
 ```bash
-python predict.py \
+uv run python predict.py \
   --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
   --data data.yaml \
   --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
   --source ../dataset/goods-and-gaps-chinese-2/valid/images
 ```
 
-The resulting images are written under `<the_artifact_path>/predict` by default.
-
 ## Export
 
 ```bash
-python export.py \
+uv run python export.py \
   --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
   --format onnx
 ```
 
 ## Runtime weights used by the app
 
-After export, place (or keep) ONNX weights under:
-
 ```text
 train/export/goods-and-gaps-chinese-2-yolo11n.onnx
 ```
 
-The app stack loads these via [`model-local/stream_server.py`](../model-local/stream_server.py).
-The agent backend does **not** run YOLO itself; it forwards images to model-local.
+Loaded by [`model-local/stream_server.py`](../model-local/stream_server.py).
+The agent does **not** run YOLO itself.
 
 ## Trained Data
 
-If training on your devices is not realistic, download trained data using the following links (google drive).
+If local training is impractical, download pre-trained runs (Google Drive):
 
 ### sku-gap-700img-1
 
 - [20260714024207-yolov8m](https://drive.google.com/drive/folders/1AMQq7KjH9x6AUVZdDsB0YwjcriO1Q9QP?usp=sharing)
-
-Put downloaded training runs under `train/artifacts/<dataset-name>/train/` (or
-export ONNX into `train/export/` for app inference):
 
 ```text
 train/

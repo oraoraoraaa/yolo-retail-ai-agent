@@ -28,60 +28,34 @@ All responses use camelCase to match the frontend TypeScript contracts.
 | `GET` | `/api/v1/database/records` | query `keyword?`, `type?` | `{ records: DatabaseRecord[] }` |
 | `GET` | `/health` | — | service + feature availability |
 
-Interactive docs are available at `http://localhost:8000/docs` once running.
+Interactive docs: `http://localhost:8000/docs`.
 
 ## Graceful degradation
 
-The service starts and answers requests even with nothing configured:
+- **Local vision service offline** → informative placeholder (no hard crash).
+- **No `OPENAI_API_KEY`** → deterministic offline chat/audit narratives.
 
-- **Local vision service offline** → the audit endpoint returns an informative
-  placeholder instead of failing hard.
-- **No `OPENAI_API_KEY`** → the chat + audit narratives use a deterministic
-  offline reply.
+## Setup (uv)
 
-Enable the real features by editing `.env` (see `.env.example`).
-
-## Layout
-
-```text
-app/
-  main.py        FastAPI app, CORS, router registration
-  config.py      env-driven settings (+ simple .env loader)
-  schemas/       Pydantic models (camelCase aliases)
-  routers/       audit / chat / database endpoints
-  services/      detector (HTTP → model-local) · agent (LLM) · in-memory store
-```
-
-## Setup
-
-Requires Python 3.10+.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+.
 
 ```bash
 cd agent
-python -m venv .venv
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-# macOS/Linux:        source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # optional; adjust values
-
-# In another terminal, start the local vision service first:
-cd ../model-local
 uv sync
-uv run stream_server.py
+cp .env.example .env   # optional
 
-# Then start the agent:
+# In another terminal, start local vision first:
+cd ../model-local && uv sync && uv run stream_server.py
+
+# Start the agent:
 cd ../agent
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
+# or: uv run python main.py
 ```
 
 ### Local weights
 
-Default weights path (relative to repo root):
-
-```text
-train/export/goods-and-gaps-chinese-2-yolo11n.onnx
-```
-
+Default: `train/export/goods-and-gaps-chinese-2-yolo11n.onnx`  
 Override with `LOCAL_VISION_MODEL` / `LOCAL_VISION_BASE_URL` in `.env`.
 
 ## Connect the frontend
@@ -92,12 +66,10 @@ VITE_API_BASE_URL=http://localhost:8000
 VITE_STREAM_BASE_URL=http://localhost:8001
 ```
 
-The default CORS allow-list already includes `http://localhost:5173`.
-
 ## Tests
 
 ```bash
 cd agent
-pip install -r requirements.txt
-pytest
+uv sync
+uv run pytest
 ```
