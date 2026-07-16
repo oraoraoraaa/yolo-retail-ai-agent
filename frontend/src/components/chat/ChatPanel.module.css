@@ -96,7 +96,6 @@
   max-width: min(85%, 34rem);
   padding: 0.75rem 0.95rem;
   border-radius: 16px;
-  white-space: pre-wrap;
   word-break: break-word;
   animation: rise 180ms ease;
 }
@@ -105,6 +104,7 @@
   background: var(--color-user-bubble);
   color: #fff;
   border-bottom-right-radius: 6px;
+  white-space: pre-wrap;
 }
 
 .bubbleAssistant {
@@ -112,6 +112,10 @@
   color: var(--color-ink);
   border: 1px solid var(--color-line);
   border-bottom-left-radius: 6px;
+}
+
+.bubbleMarkdown {
+  white-space: normal;
 }
 
 .bubbleEmpty {
