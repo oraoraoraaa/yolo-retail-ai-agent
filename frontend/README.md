@@ -1,11 +1,12 @@
 # Frontend — YOLO Retail Agent
 
-React + TypeScript + Vite workspace UI for shelf image audit and agent chat.
+React + TypeScript + Vite workspace UI for live shelf streaming, shelf image audit, agent chat, and database browsing.
 
 ## Features
 
-- **Left panel:** upload a local shelf image; display backend `suggestedAction` (small) and `explanation` (large).
-- **Right panel:** chat with the retail agent; assistant replies render as Markdown (bold, lists, headings, code, tables via GFM).
+- **Camera Stream:** select a local camera from `model-local/stream_server.py` and view live YOLO bounding boxes.
+- **Shelf Audit:** upload a local shelf image; display backend `suggestedAction` (small) and `explanation` (large).
+- **Agent Chat:** chat with the retail agent; assistant replies render as Markdown (bold, lists, headings, code, tables via GFM).
 - **API stubs:** when `VITE_API_BASE_URL` is empty, chat returns a sample Markdown reply so formatting can be verified offline.
 
 ## Project layout
@@ -31,11 +32,19 @@ cp .env.example .env
 | Variable | Description |
 | --- | --- |
 | `VITE_API_BASE_URL` | Backend origin. Leave empty to use stubs. Example: `http://localhost:8000` |
+| `VITE_STREAM_BASE_URL` | Local model stream service origin. Defaults to `http://localhost:8001` |
 
 Planned backend routes:
 
 - `POST /api/v1/audit/analyze` — multipart field `image` → `{ suggestedAction, explanation }`
 - `POST /api/v1/agent/chat` — JSON `{ message, history }` → `{ reply }`
+
+Local model stream routes, served by `../model-local/stream_server.py`:
+
+- `GET /api/v1/stream/cameras` — probe OpenCV camera indices.
+- `POST /api/v1/stream/start` — JSON `{ camera }` starts annotated streaming.
+- `GET /api/v1/stream/video` — MJPEG stream for the browser viewer.
+- `POST /api/v1/stream/stop` — stop the active camera stream.
 
 Vite also proxies `/api` → `http://localhost:8000` during local development when you switch the client to relative paths later.
 
@@ -47,6 +56,14 @@ Requires Node.js 20+. Markdown chat rendering uses `react-markdown` + `remark-gf
 cd frontend
 npm ci   # or: npm install
 npm run dev
+```
+
+For the live camera page, run the model stream service in another terminal:
+
+```bash
+cd ../model-local
+uv sync
+uv run stream_server.py
 ```
 
 Other scripts:
