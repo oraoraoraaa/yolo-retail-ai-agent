@@ -1,19 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 import { queryDatabaseRecords } from '@/api'
+import type { Language, UI_TEXT } from '@/lib/i18n'
 import type { DatabaseRecord, DatabaseRecordType } from '@/types'
 
 import styles from './DatabasePanel.module.css'
 
 type FilterValue = DatabaseRecordType | 'all'
 
-const FILTER_OPTIONS: Array<{ value: FilterValue; label: string }> = [
-  { value: 'all', label: 'All records' },
-  { value: 'audit', label: 'Audit results' },
-  { value: 'sku', label: 'SKU data' },
-  { value: 'inventory', label: 'Inventory' },
-  { value: 'chat', label: 'Chat logs' },
-]
+const FILTER_VALUES: FilterValue[] = ['all', 'audit', 'sku', 'inventory', 'chat']
 
 const TYPE_LABELS: Record<DatabaseRecordType, string> = {
   audit: 'Audit',
@@ -35,7 +30,11 @@ function formatDate(value: string): string {
   return date.toLocaleString()
 }
 
-export function DatabasePanel() {
+interface DatabasePanelProps {
+  text: (typeof UI_TEXT)[Language]['database']
+}
+
+export function DatabasePanel({ text }: DatabasePanelProps) {
   const [keyword, setKeyword] = useState('')
   const [filter, setFilter] = useState<FilterValue>('all')
   const [records, setRecords] = useState<DatabaseRecord[]>([])
@@ -54,7 +53,7 @@ export function DatabasePanel() {
       setRecords(result.records)
       setStatus('idle')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to query database records.'
+      const message = text.errors.queryFailed
       setErrorMessage(message)
       setStatus('error')
     }
@@ -77,48 +76,47 @@ export function DatabasePanel() {
   }
 
   const isLoading = status === 'loading'
+  const typeLabels = text.typeLabels
 
   return (
     <section className={styles.panel} aria-labelledby="database-panel-title">
       <header className={styles.header}>
         <div>
           <h2 id="database-panel-title" className={styles.title}>
-            Database workspace
+            {text.title}
           </h2>
-          <p className={styles.subtitle}>
-            Reserved page for saved audit results, SKU inventory, and conversation records.
-          </p>
+          <p className={styles.subtitle}>{text.subtitle}</p>
         </div>
         <button className={styles.refreshButton} type="button" disabled={isLoading} onClick={() => void loadRecords()}>
-          {isLoading ? 'Loading' : 'Refresh'}
+          {isLoading ? text.loading : text.refresh}
         </button>
       </header>
 
       <form className={styles.toolbar} onSubmit={onSubmit}>
         <label className={styles.searchLabel}>
-          <span>Search</span>
+          <span>{text.search}</span>
           <input
             className={styles.searchInput}
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="SKU, shelf, audit id, or note"
+            placeholder={text.placeholder}
           />
         </label>
-        <div className={styles.filters} aria-label="Record type filter">
-          {FILTER_OPTIONS.map((option) => (
+        <div className={styles.filters} aria-label={text.recordTypeLabel}>
+          {FILTER_VALUES.map((value, index) => (
             <button
-              key={option.value}
+              key={value}
               type="button"
-              className={`${styles.filterButton} ${filter === option.value ? styles.filterButtonActive : ''}`}
-              aria-pressed={filter === option.value}
-              onClick={() => onFilterChange(option.value)}
+              className={`${styles.filterButton} ${filter === value ? styles.filterButtonActive : ''}`}
+              aria-pressed={filter === value}
+              onClick={() => onFilterChange(value)}
             >
-              {option.label}
+              {text.filters[index]}
             </button>
           ))}
         </div>
         <button className={styles.queryButton} type="submit" disabled={isLoading}>
-          Query
+          {text.query}
         </button>
       </form>
 
@@ -129,17 +127,18 @@ export function DatabasePanel() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th scope="col">Type</th>
-                <th scope="col">Title</th>
-                <th scope="col">Summary</th>
-                <th scope="col">Updated</th>
+                {text.columns.map((column) => (
+                  <th key={column} scope="col">
+                    {column}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {records.map((record) => (
                 <tr key={record.id}>
                   <td>
-                    <span className={styles.typeBadge}>{TYPE_LABELS[record.type]}</span>
+                    <span className={styles.typeBadge}>{typeLabels[record.type]}</span>
                   </td>
                   <td>{record.title}</td>
                   <td>{record.summary}</td>
@@ -150,10 +149,8 @@ export function DatabasePanel() {
           </table>
         ) : (
           <div className={styles.emptyState}>
-            <p className={styles.emptyTitle}>{isLoading ? 'Loading records' : 'No records to display'}</p>
-            <p className={styles.emptyCopy}>
-              Connect the database endpoint to show saved shelf audits, SKU records, inventory changes, and chat logs.
-            </p>
+            <p className={styles.emptyTitle}>{isLoading ? text.loadingRecords : text.emptyTitle}</p>
+            <p className={styles.emptyCopy}>{text.emptyCopy}</p>
           </div>
         )}
       </div>

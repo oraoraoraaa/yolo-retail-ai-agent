@@ -1,24 +1,16 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
 
 import { createClientId } from '@/lib/id'
+import type { Language, UI_TEXT } from '@/lib/i18n'
 import type { ChatMessage, ChatOutgoingAttachment, ChatRequestStatus } from '@/types'
 
 import { MarkdownContent } from './MarkdownContent'
 import styles from './ChatPanel.module.css'
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-const RECOMMENDED_PROMPTS = [
-  '这张货架图里有哪些商品可能缺货？',
-  '请帮我总结这次货架巡检的异常点',
-  '哪些 SKU 需要优先补货？',
-  '如果检测到空位，应该给门店什么操作建议？',
-  '请根据图片判断陈列是否符合计划图',
-  '把检测结果整理成门店员工可执行的清单',
-  '这张图里有哪些价格牌或陈列问题？',
-  '请解释模型判断缺货的原因',
-]
 
 interface ChatPanelProps {
+  text: (typeof UI_TEXT)[Language]['chat']
   messages: ChatMessage[]
   status: ChatRequestStatus
   errorMessage: string | null
@@ -37,13 +29,12 @@ function formatFileSize(size: number): string {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
-export function ChatPanel({ messages, status, errorMessage, onSendMessage }: ChatPanelProps) {
+export function ChatPanel({ text, messages, status, errorMessage, onSendMessage }: ChatPanelProps) {
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<ChatOutgoingAttachment[]>([])
   const [localError, setLocalError] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const sentPreviewUrlsRef = useRef<string[]>([])
   const isSending = status === 'sending'
 
   useEffect(() => {
@@ -51,12 +42,14 @@ export function ChatPanel({ messages, status, errorMessage, onSendMessage }: Cha
     if (!node) {
       return
     }
+
     node.scrollTop = node.scrollHeight
   }, [messages, isSending])
 
   async function handleSubmit(event?: FormEvent): Promise<void> {
     event?.preventDefault()
     const content = draft.trim()
+
     if ((!content && attachments.length === 0) || isSending) {
       return
     }
@@ -64,11 +57,6 @@ export function ChatPanel({ messages, status, errorMessage, onSendMessage }: Cha
     const outgoingAttachments = attachments
     setDraft('')
     setAttachments([])
-    sentPreviewUrlsRef.current.push(
-      ...outgoingAttachments
-        .map((attachment) => attachment.previewUrl)
-        .filter((previewUrl): previewUrl is string => Boolean(previewUrl)),
-    )
     await onSendMessage(content, outgoingAttachments)
   }
 
@@ -91,7 +79,7 @@ export function ChatPanel({ messages, status, errorMessage, onSendMessage }: Cha
 
     for (const file of files) {
       if (!isAcceptedImage(file)) {
-        setLocalError('Please attach JPEG, PNG, WebP, or GIF images only.')
+        setLocalError(text.invalidAttachment)
         continue
       }
 
@@ -105,21 +93,21 @@ export function ChatPanel({ messages, status, errorMessage, onSendMessage }: Cha
       })
     }
 
-if (nextAttachments.length > 0) {
-  setLocalError(null)
-  setAttachments((previous) => {
-    const combined = [...previous, ...nextAttachments]
-    const kept = combined.slice(0, 4)
+    if (nextAttachments.length > 0) {
+      setLocalError(null)
+      setAttachments((previous) => {
+        const combined = [...previous, ...nextAttachments]
+        const kept = combined.slice(0, 4)
 
-    for (const dropped of combined.slice(4)) {
-      if (dropped.previewUrl) {
-        URL.revokeObjectURL(dropped.previewUrl)
-      }
+        for (const dropped of combined.slice(4)) {
+          if (dropped.previewUrl) {
+            URL.revokeObjectURL(dropped.previewUrl)
+          }
+        }
+
+        return kept
+      })
     }
-
-    return kept
-  })
-}
   }
 
   function removeAttachment(attachmentId: string): void {
@@ -128,6 +116,7 @@ if (nextAttachments.length > 0) {
       if (removed?.previewUrl) {
         URL.revokeObjectURL(removed.previewUrl)
       }
+
       return previous.filter((attachment) => attachment.id !== attachmentId)
     })
   }
@@ -140,19 +129,17 @@ if (nextAttachments.length > 0) {
     <section className={styles.panel} aria-labelledby="chat-panel-title">
       <header className={styles.header}>
         <h2 id="chat-panel-title" className={styles.title}>
-          Agent chat
+          {text.title}
         </h2>
-        <p className={styles.subtitle}>
-          Ask about shelf gaps, planogram mismatch, or replenishment. Replies are produced by the backend.
-        </p>
+        <p className={styles.subtitle}>{text.subtitle}</p>
       </header>
 
       <div ref={listRef} className={styles.messages} role="log" aria-live="polite">
         {messages.length === 0 ? (
           <div className={styles.emptyState}>
-            <p className={styles.emptyTitle}>有什么我能帮你的吗？</p>
-            <div className={styles.promptGrid} aria-label="Recommended questions">
-              {RECOMMENDED_PROMPTS.map((prompt) => (
+            <p className={styles.emptyTitle}>{text.emptyTitle}</p>
+            <div className={styles.promptGrid} aria-label={text.recommendedQuestions}>
+              {text.prompts.map((prompt) => (
                 <button key={prompt} type="button" className={styles.promptChip} onClick={() => applyPrompt(prompt)}>
                   {prompt}
                 </button>
@@ -174,13 +161,7 @@ if (nextAttachments.length > 0) {
                     isEmptyAssistant ? styles.bubbleEmpty : ''
                   } ${!isUser && !isEmptyAssistant ? styles.bubbleMarkdown : ''}`}
                 >
-                  {isEmptyAssistant ? (
-                    'Waiting for backend response...'
-                  ) : isUser ? (
-                    message.content
-                  ) : (
-                    <MarkdownContent content={message.content} />
-                  )}
+                  {isEmptyAssistant ? text.waiting : isUser ? message.content : <MarkdownContent content={message.content} />}
                   {message.attachments && message.attachments.length > 0 ? (
                     <div className={styles.messageAttachments}>
                       {message.attachments.map((attachment) => (
@@ -201,9 +182,7 @@ if (nextAttachments.length > 0) {
 
         {isSending ? (
           <div className={`${styles.bubbleRow} ${styles.bubbleRowAssistant}`}>
-            <div className={`${styles.bubble} ${styles.bubbleAssistant} ${styles.bubbleEmpty}`}>
-              Agent is thinking...
-            </div>
+            <div className={`${styles.bubble} ${styles.bubbleAssistant} ${styles.bubbleEmpty}`}>{text.thinking}</div>
           </div>
         ) : null}
       </div>
@@ -226,7 +205,7 @@ if (nextAttachments.length > 0) {
                 <button
                   type="button"
                   className={styles.removeAttachmentButton}
-                  aria-label={`Remove ${attachment.name}`}
+                  aria-label={`${text.removeAttachmentAriaPrefix} ${attachment.name}`}
                   onClick={() => removeAttachment(attachment.id)}
                 >
                   X
@@ -247,8 +226,8 @@ if (nextAttachments.length > 0) {
           type="button"
           className={styles.attachButton}
           disabled={isSending}
-          aria-label="Attach shelf images"
-          title="Attach shelf images"
+          aria-label={text.attachImagesAria}
+          title={text.attachImages}
           onClick={() => fileInputRef.current?.click()}
         >
           +
@@ -258,8 +237,8 @@ if (nextAttachments.length > 0) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Message the retail agent..."
-          aria-label="Message the retail agent"
+          placeholder={text.placeholder}
+          aria-label={text.placeholder}
           disabled={isSending}
           rows={2}
         />
@@ -268,7 +247,7 @@ if (nextAttachments.length > 0) {
           type="submit"
           disabled={isSending || (draft.trim().length === 0 && attachments.length === 0)}
         >
-          {isSending ? 'Sending' : 'Send'}
+          {isSending ? text.sending : text.send}
         </button>
       </form>
     </section>

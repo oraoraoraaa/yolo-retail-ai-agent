@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { analyzeShelfImage } from '@/api'
+import { analyzeShelfCameraCapture, analyzeShelfImage } from '@/api'
+import type { Language } from '@/lib/i18n'
 import type { AuditPanelState } from '@/types'
 
 const INITIAL_STATE: AuditPanelState = {
@@ -13,14 +14,18 @@ const INITIAL_STATE: AuditPanelState = {
 
 export function useAuditAnalysis() {
   const [state, setState] = useState<AuditPanelState>(INITIAL_STATE)
+  const [isMonitoring, setIsMonitoring] = useState(false)
   const previewUrlRef = useRef<string | null>(null)
   const fileRef = useRef<File | null>(null)
+  const monitorTimerRef = useRef<number | null>(null)
+  const monitorRunningRef = useRef(false)
 
   useEffect(() => {
     return () => {
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current)
       }
+      stopMonitoring()
     }
   }, [])
 
@@ -42,7 +47,7 @@ export function useAuditAnalysis() {
     })
   }
 
-  async function submitImage(): Promise<void> {
+  async function submitImage(model: string, language: Language): Promise<void> {
     const file = fileRef.current
     if (!file) {
       setState((previous) => ({
@@ -61,7 +66,7 @@ export function useAuditAnalysis() {
     }))
 
     try {
-      const result = await analyzeShelfImage(file)
+      const result = await analyzeShelfImage(file, model, language)
       setState((previous) => ({
         ...previous,
         status: 'success',
@@ -69,7 +74,7 @@ export function useAuditAnalysis() {
         errorMessage: null,
       }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Image analysis failed.'
+      const message = language === 'zh' ? '图片分析失败。' : 'Image analysis failed.'
       setState((previous) => ({
         ...previous,
         status: 'error',
@@ -77,6 +82,60 @@ export function useAuditAnalysis() {
         errorMessage: message,
       }))
     }
+  }
+
+  async function submitCameraCapture(camera: string, model: string, language: Language): Promise<void> {
+    if (monitorRunningRef.current) {
+      return
+    }
+
+    monitorRunningRef.current = true
+    setState((previous) => ({
+      ...previous,
+      status: 'analyzing',
+      fileName: language === 'zh' ? `摄像头 ${camera} 抓拍` : `Camera ${camera} capture`,
+      result: null,
+      errorMessage: null,
+    }))
+
+    try {
+      const result = await analyzeShelfCameraCapture(camera, model, language)
+      setState((previous) => ({
+        ...previous,
+        status: 'success',
+        previewUrl: result.annotatedImage ?? previous.previewUrl,
+        fileName: language === 'zh' ? `摄像头 ${camera} 抓拍` : `Camera ${camera} capture`,
+        result,
+        errorMessage: null,
+      }))
+    } catch (error) {
+      const message = language === 'zh' ? '摄像头抓拍分析失败。' : 'Camera capture analysis failed.'
+      setState((previous) => ({
+        ...previous,
+        status: 'error',
+        result: null,
+        errorMessage: message,
+      }))
+    } finally {
+      monitorRunningRef.current = false
+    }
+  }
+
+  function startMonitoring(camera: string, model: string, intervalMs: number, language: Language): void {
+    stopMonitoring()
+    setIsMonitoring(true)
+    void submitCameraCapture(camera, model, language)
+    monitorTimerRef.current = window.setInterval(() => {
+      void submitCameraCapture(camera, model, language)
+    }, intervalMs)
+  }
+
+  function stopMonitoring(): void {
+    if (monitorTimerRef.current !== null) {
+      window.clearInterval(monitorTimerRef.current)
+      monitorTimerRef.current = null
+    }
+    setIsMonitoring(false)
   }
 
   function clearAudit(): void {
@@ -90,8 +149,12 @@ export function useAuditAnalysis() {
 
   return {
     state,
+    isMonitoring,
     selectImage,
     submitImage,
+    submitCameraCapture,
+    startMonitoring,
+    stopMonitoring,
     clearAudit,
   }
 }

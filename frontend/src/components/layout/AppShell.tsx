@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import { LANGUAGE_LABELS, type Language } from '@/lib/i18n'
+
 import styles from './AppShell.module.css'
 
 export type AppPageId = 'stream' | 'audit' | 'chat' | 'database'
@@ -15,17 +17,46 @@ interface AppShellProps {
   pages: AppPage[]
   activePageId: AppPageId
   onPageChange: (pageId: AppPageId) => void
+  language: Language
+  languageLabel: string
+  navigationLabel: string
+  tagline: string
+  onLanguageChange: (language: Language) => void
 }
 
-export function AppShell({ children, pages, activePageId, onPageChange }: AppShellProps) {
+export function AppShell({
+  children,
+  pages,
+  activePageId,
+  onPageChange,
+  language,
+  languageLabel,
+  navigationLabel,
+  tagline,
+  onLanguageChange,
+}: AppShellProps) {
   return (
     <div className={styles.shell}>
       <header className={styles.header}>
         <div className={styles.brandBlock}>
           <p className={styles.brand}>YOLO Retail Agent</p>
-          <p className={styles.tagline}>Shelf audit workspace</p>
+          <p className={styles.tagline}>{tagline}</p>
         </div>
-        <nav className={styles.nav} aria-label="Feature pages">
+        <label className={styles.languageControl}>
+          <span>{languageLabel}</span>
+          <select
+            className={styles.languageSelect}
+            value={language}
+            onChange={(event) => onLanguageChange(event.target.value as Language)}
+          >
+            {(Object.keys(LANGUAGE_LABELS) as Language[]).map((option) => (
+              <option key={option} value={option}>
+                {LANGUAGE_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <nav className={styles.nav} aria-label={navigationLabel}>
           {pages.map((page) => {
             const isActive = page.id === activePageId
 

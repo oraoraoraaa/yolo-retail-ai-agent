@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 
 import { sendChatMessage } from '@/api'
 import { createClientId } from '@/lib/id'
+import type { Language } from '@/lib/i18n'
 import type { ChatMessage, ChatOutgoingAttachment, ChatPanelState } from '@/types'
 
 const INITIAL_STATE: ChatPanelState = {
@@ -14,7 +15,11 @@ export function useAgentChat() {
   const [state, setState] = useState<ChatPanelState>(INITIAL_STATE)
   const isSendingRef = useRef(false)
 
-  async function sendMessage(rawContent: string, attachments: ChatOutgoingAttachment[] = []): Promise<void> {
+  async function sendMessage(
+    rawContent: string,
+    attachments: ChatOutgoingAttachment[] = [],
+    language: Language = 'en',
+  ): Promise<void> {
     const content = rawContent.trim()
     if ((!content && attachments.length === 0) || isSendingRef.current || state.status === 'sending') {
       return
@@ -49,6 +54,7 @@ export function useAgentChat() {
         message: content,
         history,
         attachments,
+        language,
       })
 
       const assistantMessage: ChatMessage = {
@@ -64,7 +70,7 @@ export function useAgentChat() {
         errorMessage: null,
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reach the agent.'
+      const message = language === 'zh' ? '无法连接到智能体。' : 'Failed to reach the agent.'
       setState((previous) => ({
         ...previous,
         status: 'error',

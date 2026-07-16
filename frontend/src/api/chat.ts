@@ -1,5 +1,7 @@
 import type { ChatMessage, ChatOutgoingAttachment } from '@/types'
 
+import type { Language } from '@/lib/i18n'
+
 import { apiFetch, getApiBaseUrl } from './client'
 
 const CHAT_PATH = '/api/v1/agent/chat'
@@ -8,6 +10,7 @@ export interface SendChatPayload {
   message: string
   history: ChatMessage[]
   attachments?: ChatOutgoingAttachment[]
+  language: Language
 }
 
 export interface SendChatResponse {
@@ -26,7 +29,8 @@ export interface SendChatResponse {
  * Until the backend exists this returns an empty reply.
  */
 /** Demo Markdown used when the backend is not configured, so the UI can be verified. */
-const STUB_MARKDOWN_REPLY = `## 巡检摘要
+const STUB_REPLIES: Record<Language, string> = {
+  zh: `## 巡检摘要
 
 当前为 **本地 stub** 回复（未配置 \`VITE_API_BASE_URL\`）。接入后端后会显示真实 Agent 输出。
 
@@ -39,11 +43,26 @@ const STUB_MARKDOWN_REPLY = `## 巡检摘要
 - 检测到 **空位（gap）**
 - 相邻 SKU 陈列正常
 - 暂无明显错放
-`
+`,
+  en: `## Audit Summary
+
+This is a **local stub** reply because \`VITE_API_BASE_URL\` is not configured. Once the backend is connected, real agent output will appear here.
+
+### Suggested Actions
+1. Prioritize replenishment for **Brand Y Soda**
+2. Check shelf coordinate \`(X:12, Y:45)\` against the planogram
+3. Ask store staff to pick stock from the backroom
+
+### Observations
+- A shelf **gap** was detected
+- Adjacent SKUs look normal
+- No obvious misplaced item is shown
+`,
+}
 
 export async function sendChatMessage(payload: SendChatPayload): Promise<SendChatResponse> {
   if (!getApiBaseUrl()) {
-    return { reply: STUB_MARKDOWN_REPLY }
+    return { reply: STUB_REPLIES[payload.language] }
   }
 
   const hasAttachments = (payload.attachments?.length ?? 0) > 0
@@ -60,6 +79,7 @@ export async function sendChatMessage(payload: SendChatPayload): Promise<SendCha
         body: JSON.stringify({
           message: payload.message,
           history: payload.history,
+          language: payload.language,
         }),
       })
 
@@ -70,6 +90,7 @@ function buildMultipartPayload(payload: SendChatPayload): FormData {
   const body = new FormData()
   body.append('message', payload.message)
   body.append('history', JSON.stringify(payload.history))
+  body.append('language', payload.language)
 
   for (const attachment of payload.attachments ?? []) {
     body.append('images', attachment.file, attachment.name)

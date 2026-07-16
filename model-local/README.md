@@ -29,9 +29,12 @@ Open the frontend, go to **Camera Stream**, select the camera, and click **Start
 Available stream endpoints:
 
 - `GET /api/v1/stream/cameras`: probe local OpenCV camera indices.
+- `GET /api/v1/stream/models`: list selectable local model weights.
 - `POST /api/v1/stream/start`: start inference, for example `{ "camera": "0" }`.
 - `GET /api/v1/stream/video`: MJPEG stream of annotated frames.
 - `POST /api/v1/stream/stop`: stop the active camera stream.
+- `POST /api/v1/detect/image`: run one uploaded image through the local model and return detection JSON plus an annotated image data URL.
+- `POST /api/v1/detect/capture`: capture one frame from a selected camera, run detection, and return detection JSON plus an annotated image data URL.
 
 ### Window on-screen Test
 

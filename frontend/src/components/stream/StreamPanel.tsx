@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { getStreamVideoUrl, listStreamCameras, startStream, stopStream, type StreamCamera } from '@/api'
+import type { Language, UI_TEXT } from '@/lib/i18n'
 
 import styles from './StreamPanel.module.css'
 
 type StreamUiStatus = 'idle' | 'loading-cameras' | 'starting' | 'live' | 'error'
 
-export function StreamPanel() {
+interface StreamPanelProps {
+  text: (typeof UI_TEXT)[Language]['stream']
+}
+
+export function StreamPanel({ text }: StreamPanelProps) {
   const [cameras, setCameras] = useState<StreamCamera[]>([])
   const [selectedCamera, setSelectedCamera] = useState('')
   const [status, setStatus] = useState<StreamUiStatus>('idle')
@@ -52,7 +57,7 @@ export function StreamPanel() {
         }
 
         setStatus('error')
-        setErrorMessage(error instanceof Error ? error.message : 'Could not reach the local stream service.')
+        setErrorMessage(text.errors.reachService)
       }
     }
 
@@ -71,14 +76,14 @@ export function StreamPanel() {
       const response = await startStream(camera)
       if (response.status === 'error') {
         setStatus('error')
-        setErrorMessage(response.error ?? 'The local stream service could not start the camera.')
+        setErrorMessage(response.error ?? text.errors.startCamera)
         return
       }
 
       setReloadKey((value) => value + 1)
     } catch (error) {
       setStatus('error')
-      setErrorMessage(error instanceof Error ? error.message : 'The local stream service could not start.')
+      setErrorMessage(text.errors.start)
     }
   }
 
@@ -96,25 +101,23 @@ export function StreamPanel() {
   const isBusy = status === 'starting' || status === 'loading-cameras'
   const statusLabel =
     status === 'live'
-      ? 'Live'
+      ? text.statuses.live
       : status === 'starting'
-        ? 'Starting'
+        ? text.statuses.starting
         : status === 'loading-cameras'
-          ? 'Scanning'
+          ? text.statuses.loading
           : status === 'error'
-            ? 'Offline'
-            : 'Ready'
+            ? text.statuses.error
+            : text.statuses.ready
 
   return (
     <section className={styles.panel} aria-labelledby="stream-panel-title">
       <header className={styles.header}>
         <div>
           <h2 id="stream-panel-title" className={styles.title}>
-            Camera stream
+            {text.title}
           </h2>
-          <p className={styles.subtitle}>
-            Select a local camera and view YOLO bounding boxes directly in the browser.
-          </p>
+          <p className={styles.subtitle}>{text.subtitle}</p>
         </div>
         <div className={`${styles.statusBadge} ${isLive ? styles.statusLive : ''}`}>
           <span className={styles.statusDot} />
@@ -124,7 +127,7 @@ export function StreamPanel() {
 
       <div className={styles.toolbar}>
         <label className={styles.cameraLabel}>
-          <span>Camera</span>
+          <span>{text.camera}</span>
           <select
             className={styles.cameraSelect}
             value={selectedCamera}
@@ -138,19 +141,21 @@ export function StreamPanel() {
                 </option>
               ))
             ) : (
-              <option value={selectedCamera || '0'}>{selectedCamera ? `Camera ${selectedCamera}` : 'Camera 0'}</option>
+              <option value={selectedCamera || '0'}>
+                {selectedCamera ? `${text.cameraFallback} ${selectedCamera}` : `${text.cameraFallback} 0`}
+              </option>
             )}
           </select>
         </label>
         <div className={styles.actions}>
           <button className={styles.primaryButton} type="button" disabled={isBusy || isLive} onClick={connect}>
-            Start streaming
+            {text.start}
           </button>
           <button className={styles.ghostButton} type="button" disabled={isBusy || isLive} onClick={() => void loadCameras()}>
-            Refresh cameras
+            {text.refresh}
           </button>
           <button className={styles.ghostButton} type="button" disabled={status === 'idle'} onClick={disconnect}>
-            Stop
+            {text.stop}
           </button>
         </div>
       </div>
@@ -161,16 +166,14 @@ export function StreamPanel() {
             key={reloadKey}
             className={styles.streamImage}
             src={cacheBustedUrl}
-            alt="Real-time shelf detection stream"
+            alt={text.title}
             onLoad={() => setStatus('live')}
             onError={() => setStatus('error')}
           />
         ) : (
           <div className={styles.placeholder}>
-            <p className={styles.placeholderTitle}>Stream not connected</p>
-            <p className={styles.placeholderCopy}>
-              Start <code>model-local/stream_server.py</code>, choose a camera, then start streaming.
-            </p>
+            <p className={styles.placeholderTitle}>{text.disconnected}</p>
+            <p className={styles.placeholderCopy}>{text.startService}</p>
             {errorMessage ? <p className={styles.errorCopy}>{errorMessage}</p> : null}
           </div>
         )}
@@ -178,24 +181,19 @@ export function StreamPanel() {
         {isBusy ? (
           <div className={styles.overlay} role="status" aria-live="polite">
             <div className={styles.spinner} />
-            <span>{status === 'loading-cameras' ? 'Scanning cameras...' : 'Opening camera stream...'}</span>
+            <span>{status === 'loading-cameras' ? text.scanning : text.opening}</span>
           </div>
         ) : null}
       </div>
 
       <div className={styles.infoGrid}>
         <article className={styles.infoBox}>
-          <h3>Local stream service</h3>
-          <p>
-            Run <code>uv run stream_server.py</code> in <code>model-local</code>. Configure{' '}
-            <code>VITE_STREAM_BASE_URL</code> if it is not on <code>http://localhost:8001</code>.
-          </p>
+          <h3>{text.service}</h3>
+          <p>{text.serviceCopy}</p>
         </article>
         <article className={styles.infoBox}>
-          <h3>Model overlay</h3>
-          <p>
-            Frames are read by OpenCV, annotated with the local ONNX YOLO model, and returned as an MJPEG browser stream.
-          </p>
+          <h3>{text.overlay}</h3>
+          <p>{text.overlayCopy}</p>
         </article>
       </div>
     </section>

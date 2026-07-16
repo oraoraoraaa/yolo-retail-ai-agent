@@ -31,6 +31,42 @@
   font-size: 0.92rem;
 }
 
+.controlPanel {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(12rem, 1.3fr) minmax(8rem, 0.8fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--color-surface-strong);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-ink-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.select {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.65rem;
+  background: #fff;
+  color: var(--color-ink);
+}
+
+.monitorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
 .dropzone {
   position: relative;
   display: grid;
@@ -230,6 +266,27 @@
   margin: 0;
   color: var(--color-danger);
   font-size: 0.9rem;
+}
+
+@media (max-width: 1080px) {
+  .controlPanel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .monitorActions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+  .controlPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .monitorActions,
+  .actions {
+    display: grid;
+  }
 }
 
 @keyframes progressSweep {

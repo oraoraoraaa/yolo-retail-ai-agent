@@ -54,6 +54,7 @@ async def chat(request: Request) -> ChatResponse:
         form = await request.form()
         message = str(form.get("message", ""))
         history = _parse_history(form.get("history"))
+        language = str(form.get("language", "en"))
         uploads = form.getlist("images")
         attachment_names = [
             getattr(upload, "filename", None) or "image"
@@ -70,6 +71,7 @@ async def chat(request: Request) -> ChatResponse:
             ) from exc
         message = payload.message
         history = payload.history
+        language = payload.language
         attachment_names = []
 
     if not message.strip() and not attachment_names:
@@ -78,7 +80,7 @@ async def chat(request: Request) -> ChatResponse:
             detail="Provide a message or at least one attachment.",
         )
 
-    reply = get_agent().chat(message, history, attachment_names)
+    reply = get_agent().chat(message, history, attachment_names, language=language)
 
     summary = message.strip() or f"{len(attachment_names)} attachment(s)"
     get_store().add("chat", title="Agent conversation", summary=summary[:120])

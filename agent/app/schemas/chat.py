@@ -36,6 +36,7 @@ class ChatRequest(CamelModel):
 
     message: str
     history: list[ChatMessage] = Field(default_factory=list)
+    language: str = "en"
 
 
 class ChatResponse(CamelModel):

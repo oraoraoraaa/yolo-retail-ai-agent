@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import threading
@@ -13,10 +14,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 import cv2
+import numpy as np
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
-from detection import draw_predictions, open_video_capture, parse_video_reference
+from detection import draw_predictions, get_detection_names, open_video_capture, parse_video_reference
 
 DEFAULT_WEIGHTS = (
     Path(__file__).resolve().parent.parent
@@ -193,6 +195,87 @@ class DetectionStream:
 stream = DetectionStream()
 
 
+def image_data_url(jpeg: bytes) -> str:
+    encoded = base64.b64encode(jpeg).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
+def detection_payload(result: object | None, model: object, width: int, height: int) -> list[dict[str, Any]]:
+    if result is None:
+        return []
+
+    boxes = getattr(result, "boxes", None)
+    if boxes is None or len(boxes) == 0:
+        return []
+
+    names = get_detection_names(model, result)
+    xyxy = boxes.xyxy.cpu().numpy()
+    confidence = boxes.conf.cpu().numpy() if boxes.conf is not None else None
+    class_id = boxes.cls.cpu().numpy().astype(int) if boxes.cls is not None else None
+
+    detections: list[dict[str, Any]] = []
+    for index, box in enumerate(xyxy):
+        det_class_id = None if class_id is None else int(class_id[index])
+        conf = 0.0 if confidence is None else float(confidence[index])
+        label = names.get(det_class_id, "object") if det_class_id is not None else "object"
+        x1, y1, x2, y2 = [float(value) for value in box]
+        detections.append(
+            {
+                "label": label,
+                "confidence": conf,
+                "classId": det_class_id,
+                "box": {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "width": max(0.0, x2 - x1),
+                    "height": max(0.0, y2 - y1),
+                },
+                "normalizedBox": {
+                    "x1": x1 / width if width else 0,
+                    "y1": y1 / height if height else 0,
+                    "x2": x2 / width if width else 0,
+                    "y2": y2 / height if height else 0,
+                },
+            }
+        )
+    return detections
+
+
+def run_detection(frame, options: StreamOptions) -> dict[str, Any]:
+    model = stream._load_model(options.weights)
+    results = model.predict(
+        source=frame,
+        imgsz=options.imgsz,
+        conf=options.conf,
+        iou=options.iou,
+        device=options.device,
+        max_det=options.max_det,
+        verbose=False,
+    )
+    result = results[0] if results else None
+    annotated_frame = draw_predictions(result, frame, model) if result else frame
+    encoded, jpeg = cv2.imencode(".jpg", annotated_frame)
+    if not encoded:
+        raise RuntimeError("Could not encode annotated image.")
+
+    height, width = frame.shape[:2]
+    detections = detection_payload(result, model, width, height)
+    return {
+        "annotatedImage": image_data_url(jpeg.tobytes()),
+        "detections": detections,
+        "summary": {
+            "total": len(detections),
+            "gapCount": sum(1 for item in detections if "gap" in item["label"].lower()),
+            "productCount": sum(1 for item in detections if "gap" not in item["label"].lower()),
+        },
+        "image": {"width": width, "height": height},
+        "model": str(options.weights.expanduser().resolve()),
+        "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
 def probe_cameras(limit: int) -> list[dict[str, str]]:
     cameras: list[dict[str, str]] = []
     for index in range(limit):
@@ -205,10 +288,21 @@ def probe_cameras(limit: int) -> list[dict[str, str]]:
     return cameras
 
 
+def available_models() -> list[dict[str, str]]:
+    models = [
+        {
+            "id": str(DEFAULT_WEIGHTS),
+            "label": DEFAULT_WEIGHTS.name,
+            "path": str(DEFAULT_WEIGHTS),
+        }
+    ]
+    return models
+
+
 def parse_options(payload: dict[str, Any]) -> StreamOptions:
     return StreamOptions(
         camera=str(payload.get("camera") or os.getenv("VIDEO_REFERENCE", "0")),
-        weights=Path(str(payload.get("weights") or DEFAULT_WEIGHTS)),
+        weights=Path(str(payload.get("weights") or payload.get("model") or DEFAULT_WEIGHTS)),
         imgsz=int(payload.get("imgsz") or 640),
         conf=float(payload.get("conf") or 0.25),
         iou=float(payload.get("iou") or 0.7),
@@ -247,6 +341,14 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
                     "defaultCamera": cameras[0]["id"] if cameras else "0",
                 }
             )
+        elif path == "/api/v1/stream/models":
+            models = available_models()
+            self._send_json(
+                {
+                    "models": models,
+                    "defaultModel": models[0]["id"] if models else str(DEFAULT_WEIGHTS),
+                }
+            )
         elif path == "/api/v1/stream/status":
             self._send_json(stream.status())
         elif path == "/api/v1/stream/video":
@@ -270,6 +372,10 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/v1/stream/stop":
             stream.stop()
             self._send_json(stream.status())
+        elif path == "/api/v1/detect/image":
+            self._handle_detect_image()
+        elif path == "/api/v1/detect/capture":
+            self._handle_detect_capture()
         else:
             self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
@@ -279,6 +385,50 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
             return {}
         body = self.rfile.read(length)
         return json.loads(body.decode("utf-8"))
+
+    def _handle_detect_image(self) -> None:
+        payload = self._read_json()
+        image_base64 = str(payload.get("imageBase64") or "")
+        if "," in image_base64:
+            image_base64 = image_base64.split(",", 1)[1]
+        if not image_base64:
+            self._send_json(
+                {"error": "Expected JSON field imageBase64."},
+                status=HTTPStatus.BAD_REQUEST,
+            )
+            return
+
+        try:
+            image_bytes = base64.b64decode(image_base64)
+            frame = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if frame is None:
+                raise RuntimeError("Could not decode uploaded image.")
+            result = run_detection(frame, parse_options(payload))
+        except Exception as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        self._send_json(result)
+
+    def _handle_detect_capture(self) -> None:
+        payload = self._read_json()
+        options = parse_options(payload)
+        capture = None
+        try:
+            capture = open_video_capture(parse_video_reference(options.camera))
+            ok, frame = capture.read()
+            if not ok:
+                raise RuntimeError(f"Failed to read a frame from {options.camera!r}.")
+            result = run_detection(frame, options)
+            result["camera"] = options.camera
+        except Exception as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        finally:
+            if capture is not None:
+                capture.release()
+
+        self._send_json(result)
 
     def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload).encode("utf-8")

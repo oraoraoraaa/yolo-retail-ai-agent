@@ -5,7 +5,7 @@ React + TypeScript + Vite workspace UI for live shelf streaming, shelf image aud
 ## Features
 
 - **Camera Stream:** select a local camera from `model-local/stream_server.py` and view live YOLO bounding boxes.
-- **Shelf Audit:** upload a local shelf image; display backend `suggestedAction` (small) and `explanation` (large).
+- **Shelf Audit:** upload a local shelf image or run low-frequency camera monitoring; send detector JSON to the agent and display the suggested action and explanation.
 - **Agent Chat:** chat with the retail agent; assistant replies render as Markdown (bold, lists, headings, code, tables via GFM).
 - **API stubs:** when `VITE_API_BASE_URL` is empty, chat returns a sample Markdown reply so formatting can be verified offline.
 
@@ -42,9 +42,14 @@ Planned backend routes:
 Local model stream routes, served by `../model-local/stream_server.py`:
 
 - `GET /api/v1/stream/cameras` — probe OpenCV camera indices.
+- `GET /api/v1/stream/models` — list selectable local model weights.
 - `POST /api/v1/stream/start` — JSON `{ camera }` starts annotated streaming.
 - `GET /api/v1/stream/video` — MJPEG stream for the browser viewer.
 - `POST /api/v1/stream/stop` — stop the active camera stream.
+- `POST /api/v1/detect/image` — JSON image payload → annotated image + detection JSON.
+- `POST /api/v1/detect/capture` — JSON `{ camera, model }` → one camera capture detection.
+
+The Shelf Audit agent step sends local detector JSON to `POST /api/v1/audit/analyze-detections`. The agent uses the configured LLM when available and falls back to deterministic offline analysis otherwise. Planogram lookup currently returns `null`.
 
 Vite also proxies `/api` → `http://localhost:8000` during local development when you switch the client to relative paths later.
 

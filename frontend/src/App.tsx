@@ -7,58 +7,86 @@ import { AppShell, type AppPage, type AppPageId } from '@/components/layout/AppS
 import { StreamPanel } from '@/components/stream/StreamPanel'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useAuditAnalysis } from '@/hooks/useAuditAnalysis'
+import { UI_TEXT, type Language } from '@/lib/i18n'
 
-const PAGES: AppPage[] = [
-  {
-    id: 'stream',
-    label: 'Camera Stream',
-    description: 'Live shelf detection view',
-  },
-  {
-    id: 'audit',
-    label: 'Shelf Audit',
-    description: 'Upload image and view analysis',
-  },
-  {
-    id: 'chat',
-    label: 'Agent Chat',
-    description: 'Ask questions about retail ops',
-  },
-  {
-    id: 'database',
-    label: 'Database',
-    description: 'Browse and query saved records',
-  },
-]
+function getInitialLanguage(): Language {
+  const stored = window.localStorage.getItem('yolo-retail-language')
+  return stored === 'zh' ? 'zh' : 'en'
+}
 
 function App() {
   const [activePageId, setActivePageId] = useState<AppPageId>('stream')
+  const [language, setLanguage] = useState<Language>(getInitialLanguage)
   const audit = useAuditAnalysis()
   const chat = useAgentChat()
+  const text = UI_TEXT[language]
+
+  const pages: AppPage[] = [
+    {
+      id: 'stream',
+      label: text.pages.stream[0],
+      description: text.pages.stream[1],
+    },
+    {
+      id: 'audit',
+      label: text.pages.audit[0],
+      description: text.pages.audit[1],
+    },
+    {
+      id: 'chat',
+      label: text.pages.chat[0],
+      description: text.pages.chat[1],
+    },
+    {
+      id: 'database',
+      label: text.pages.database[0],
+      description: text.pages.database[1],
+    },
+  ]
+
+  function updateLanguage(nextLanguage: Language): void {
+    setLanguage(nextLanguage)
+    window.localStorage.setItem('yolo-retail-language', nextLanguage)
+  }
 
   return (
-    <AppShell pages={PAGES} activePageId={activePageId} onPageChange={setActivePageId}>
-      {activePageId === 'stream' ? <StreamPanel /> : null}
+    <AppShell
+      pages={pages}
+      activePageId={activePageId}
+      onPageChange={setActivePageId}
+      language={language}
+      languageLabel={text.language}
+      navigationLabel={text.shell.navLabel}
+      tagline={text.brandTagline}
+      onLanguageChange={updateLanguage}
+    >
+      {activePageId === 'stream' ? <StreamPanel text={text.stream} /> : null}
 
       {activePageId === 'audit' ? (
         <ImageUploadPanel
+          text={text.audit}
           state={audit.state}
+          isMonitoring={audit.isMonitoring}
           onSelectImage={audit.selectImage}
-          onStartInference={audit.submitImage}
+          onStartInference={(model) => audit.submitImage(model, language)}
+          onAnalyzeCameraCapture={(camera, model) => audit.submitCameraCapture(camera, model, language)}
+          onStartMonitoring={(camera, model, intervalMs) => audit.startMonitoring(camera, model, intervalMs, language)}
+          onStopMonitoring={audit.stopMonitoring}
           onClear={audit.clearAudit}
         />
       ) : null}
 
       {activePageId === 'chat' ? (
         <ChatPanel
+          text={text.chat}
           messages={chat.state.messages}
           status={chat.state.status}
           errorMessage={chat.state.errorMessage}
-          onSendMessage={chat.sendMessage}
+          onSendMessage={(content, attachments) => chat.sendMessage(content, attachments, language)}
         />
       ) : null}
 
-      {activePageId === 'database' ? <DatabasePanel /> : null}
+      {activePageId === 'database' ? <DatabasePanel text={text.database} /> : null}
     </AppShell>
   )
 }

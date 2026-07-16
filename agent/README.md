@@ -11,6 +11,7 @@ All responses use camelCase to match the frontend TypeScript contracts.
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/audit/analyze` | multipart `image` | `{ suggestedAction, explanation }` |
+| `POST` | `/api/v1/audit/analyze-detections` | JSON `{ visionModelResponse, planogramResponse }` | `{ suggestedAction, explanation }` |
 | `POST` | `/api/v1/agent/chat` | JSON `{ message, history }` or multipart (`message`, `history`, `images[]`) | `{ reply }` |
 | `GET` | `/api/v1/database/records` | query `keyword?`, `type?` | `{ records: DatabaseRecord[] }` |
 | `GET` | `/health` | — | service + feature availability |

@@ -8,7 +8,9 @@ content.
 
 from __future__ import annotations
 
+import json
 import os
+from typing import Any
 
 from app.config import Settings, get_settings
 from app.schemas.chat import ChatMessage
@@ -42,6 +44,12 @@ def _openai_proxy_url() -> str | None:
     return None
 
 
+def _reply_instruction(language: str) -> str:
+    if language == "zh":
+        return "\n\nReply in Chinese."
+    return ""
+
+
 class RetailAgent:
     """Conversational + audit reasoning backed by an optional LLM."""
 
@@ -55,40 +63,81 @@ class RetailAgent:
         message: str,
         history: list[ChatMessage],
         attachment_names: list[str] | None = None,
+        language: str = "en",
     ) -> str:
         """Produce a reply to the user's message."""
         attachment_names = attachment_names or []
         if not self._settings.llm_enabled:
-            return self._mock_chat_reply(message, attachment_names)
+            return self._mock_chat_reply(message, attachment_names, language)
 
         try:
-            return self._llm_chat(message, history, attachment_names)
+            return self._llm_chat(message, history, attachment_names, language)
         except Exception as exc:  # pragma: no cover - network dependent
-            return (
-                "The agent could not reach the language model "
-                f"({exc}). Showing an offline summary instead.\n\n"
-                + self._mock_chat_reply(message, attachment_names)
+            return self._offline_chat_fallback(
+                message, attachment_names, language, str(exc)
             )
 
-    def _mock_chat_reply(self, message: str, attachment_names: list[str]) -> str:
+    def _offline_chat_fallback(
+        self,
+        message: str,
+        attachment_names: list[str],
+        language: str,
+        error: str,
+    ) -> str:
+        if language == "zh":
+            return (
+                "智能体无法连接到语言模型 "
+                f"({error})。以下是离线摘要。\n\n"
+                + self._mock_chat_reply(message, attachment_names, language)
+            )
+
+        return (
+            "The agent could not reach the language model "
+            f"({error}). Showing an offline summary instead.\n\n"
+            + self._mock_chat_reply(message, attachment_names, language)
+        )
+
+    def _mock_chat_reply(
+        self, message: str, attachment_names: list[str], language: str
+    ) -> str:
         parts: list[str] = []
         if message:
-            parts.append(f'You asked: "{message}".')
+            if language == "zh":
+                parts.append(f'你提问的是："{message}"。')
+            else:
+                parts.append(f'You asked: "{message}".')
         if attachment_names:
             joined = ", ".join(attachment_names)
-            parts.append(f"I received {len(attachment_names)} attachment(s): {joined}.")
+            if language == "zh":
+                parts.append(f"我收到了 {len(attachment_names)} 个附件：{joined}。")
+            else:
+                parts.append(
+                    f"I received {len(attachment_names)} attachment(s): {joined}."
+                )
         if self._settings.llm_enabled:
-            parts.append(
-                "LLM access is configured but temporarily unavailable. Meanwhile: "
-                "run a shelf audit to detect gaps, then I can cross-reference the "
-                "planogram to flag out-of-stock SKUs."
-            )
+            if language == "zh":
+                parts.append(
+                    "已配置 LLM，但当前暂时不可用。与此同时：先运行货架巡检检测空位，"
+                    "然后我可以交叉比对计划图来标记缺货 SKU。"
+                )
+            else:
+                parts.append(
+                    "LLM access is configured but temporarily unavailable. Meanwhile: "
+                    "run a shelf audit to detect gaps, then I can cross-reference the "
+                    "planogram to flag out-of-stock SKUs."
+                )
         else:
-            parts.append(
-                "LLM access is not configured (set OPENAI_API_KEY to enable real "
-                "reasoning). Meanwhile: run a shelf audit to detect gaps, then I can "
-                "cross-reference the planogram to flag out-of-stock SKUs."
-            )
+            if language == "zh":
+                parts.append(
+                    "LLM 访问尚未配置（设置 OPENAI_API_KEY 可启用真实推理）。与此同时："
+                    "先运行货架巡检检测空位，然后我可以交叉比对计划图来标记缺货 SKU。"
+                )
+            else:
+                parts.append(
+                    "LLM access is not configured (set OPENAI_API_KEY to enable real "
+                    "reasoning). Meanwhile: run a shelf audit to detect gaps, then I can "
+                    "cross-reference the planogram to flag out-of-stock SKUs."
+                )
         return " ".join(parts)
 
     def _llm_chat(
@@ -96,6 +145,7 @@ class RetailAgent:
         message: str,
         history: list[ChatMessage],
         attachment_names: list[str],
+        language: str,
     ) -> str:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         for item in history:
@@ -105,6 +155,7 @@ class RetailAgent:
         user_content = message
         if attachment_names:
             user_content += "\n\n[Attached images: " + ", ".join(attachment_names) + "]"
+        user_content += _reply_instruction(language)
         # The latest user message is already the tail of `history` from the
         # frontend; only append when it is missing to avoid duplication.
         if not history or history[-1].role != "user" or history[-1].content != message:
@@ -116,7 +167,11 @@ class RetailAgent:
 
     # -- Audit narrative ----------------------------------------------------
 
-    def summarize_audit(self, result: GapDetectionResult) -> tuple[str, str]:
+    def summarize_audit(
+        self,
+        result: GapDetectionResult,
+        language: str = "en",
+    ) -> tuple[str, str]:
         """Return ``(suggested_action, explanation)`` for an audit result."""
         if not result.available:
             reason = result.unavailable_reason or "Detector is unavailable."
@@ -153,6 +208,8 @@ class RetailAgent:
                 "Give a short suggested action (max 6 words) on the first line, "
                 "then a blank line, then a 2-3 sentence explanation for store staff."
             )
+            prompt += _reply_instruction(language)
+
             reply = self._call_completion(
                 [
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -160,12 +217,111 @@ class RetailAgent:
                 ]
             )
             action, _, explanation = reply.partition("\n")
-            action = action.strip() or (f"Restock {gaps} gap(s)" if gaps else "No action needed")
+            action = action.strip() or (
+                f"Restock {gaps} gap(s)" if gaps else "No action needed"
+            )
             explanation = explanation.strip() or facts
             return action, explanation
         except Exception:  # pragma: no cover - network dependent
             fallback_action = f"Restock {gaps} gap(s)" if gaps else "No action needed"
             return fallback_action, facts
+
+    def summarize_detection_json(
+        self,
+        vision_model_response: dict[str, Any],
+        planogram_response: dict[str, Any] | None,
+        language: str = "en",
+    ) -> tuple[str, str]:
+        """Analyze local detector JSON, optionally enriched by Planogram data."""
+        summary = vision_model_response.get("summary", {})
+        detections = vision_model_response.get("detections", [])
+        total = int(summary.get("total") or len(detections))
+        gaps = int(summary.get("gapCount") or 0)
+        products = int(summary.get("productCount") or max(0, total - gaps))
+
+        if not self._settings.llm_enabled:
+            return self._mock_detection_json_reply(total, gaps, products, language)
+
+        try:
+            prompt = (
+                "A local shelf vision model produced this JSON response. "
+                "Use it to recommend the next store-staff action. "
+                "If Planogram data is null or empty, explicitly treat the planogram lookup as unavailable. "
+                "Return a short suggested action (max 8 words) on the first line, "
+                "then a blank line, then a concise explanation.\n\n"
+                "Vision model JSON:\n"
+                f"{json.dumps(vision_model_response, ensure_ascii=False)}\n\n"
+                "Planogram response:\n"
+                f"{json.dumps(planogram_response, ensure_ascii=False)}"
+            )
+            prompt += _reply_instruction(language)
+
+            reply = self._call_completion(
+                [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ]
+            )
+            action, _, explanation = reply.partition("\n")
+            action = action.strip() or self._offline_detection_action(
+                gaps, total, language
+            )
+            explanation = explanation.strip() or self._offline_detection_explanation(
+                total, gaps, products, language
+            )
+            return action, explanation
+        except Exception:  # pragma: no cover - network dependent
+            return self._mock_detection_json_reply(total, gaps, products, language)
+
+    def _mock_detection_json_reply(
+        self,
+        total: int,
+        gaps: int,
+        products: int,
+        language: str,
+    ) -> tuple[str, str]:
+        return (
+            self._offline_detection_action(gaps, total, language),
+            self._offline_detection_explanation(total, gaps, products, language),
+        )
+
+    def _offline_detection_explanation(
+        self,
+        total: int,
+        gaps: int,
+        products: int,
+        language: str,
+    ) -> str:
+        if language == "zh":
+            if total == 0:
+                return (
+                    "本地视觉模型没有检测到商品或货架空位。请在继续使用此巡检结果前，"
+                    "检查摄像头角度、光照和货架可见性。"
+                )
+            if gaps == 0:
+                return (
+                    f"本地视觉模型检测到 {products} 个商品候选，没有发现空位候选。"
+                    "计划图查询尚未实现，因此当前离线建议只基于检测器输出。"
+                )
+            return (
+                f"本地视觉模型检测到 {gaps} 个空位候选和 {products} 个商品候选。"
+                "计划图查询尚未实现，因此门店人员应在补货前人工核对空位位置。"
+            )
+
+        if total == 0:
+            return (
+                "The local vision model did not detect products or shelf gaps. "
+                "Verify the camera angle, lighting, and shelf visibility before relying on this audit."
+            )
+        if gaps == 0:
+            return (
+                f"The local vision model detected {products} product candidate(s) and no gap candidates. "
+                "Planogram lookup is not implemented yet, so this offline recommendation is based only on detector output."
+            )
+        return (
+            f"The local vision model detected {gaps} gap candidate(s) and {products} product candidate(s). "
+            "Planogram lookup is not implemented yet, so staff should verify the gap locations manually before restocking."
+        )
 
     # -- OpenAI-compatible transport ---------------------------------------
 

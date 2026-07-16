@@ -1,7 +1,25 @@
 export { ApiError, apiFetch, getApiBaseUrl } from './client'
-export { analyzeShelfImage } from './audit'
+export { analyzeShelfCameraCapture, analyzeShelfImage } from './audit'
 export { sendChatMessage } from './chat'
 export { queryDatabaseRecords } from './database'
-export { getStreamStatus, getStreamVideoUrl, listStreamCameras, startStream, stopStream } from './stream'
+export {
+  captureCameraDetection,
+  detectUploadedImage,
+  getStreamStatus,
+  getStreamVideoUrl,
+  listStreamCameras,
+  listStreamModels,
+  startStream,
+  stopStream,
+} from './stream'
 export type { SendChatPayload, SendChatResponse } from './chat'
-export type { StreamCamera, StreamCamerasResponse, StreamStatusResponse } from './stream'
+export type {
+  DetectionBox,
+  DetectionResultItem,
+  LocalDetectionResult,
+  StreamCamera,
+  StreamCamerasResponse,
+  StreamModel,
+  StreamModelsResponse,
+  StreamStatusResponse,
+} from './stream'
