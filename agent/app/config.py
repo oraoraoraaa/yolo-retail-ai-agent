@@ -11,9 +11,12 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-# backend/app/config.py -> backend/app -> backend -> repo root
+# agent/app/config.py -> agent/app -> agent -> repo root
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_LOCAL_WEIGHTS = (
+    REPO_ROOT / "train" / "export" / "goods-and-gaps-chinese-2-yolo11n.onnx"
+)
 
 
 def _load_dotenv(path: Path) -> None:
@@ -58,18 +61,21 @@ class Settings:
         )
     )
 
-    # YOLO gap-detection
-    yolo_weights_path: Path = field(
-        default_factory=lambda: _resolve(
-            os.getenv(
-                "YOLO_WEIGHTS_PATH",
-                "artifacts/gap-detection/train/weights/best.pt",
-            )
+    # Local vision service (model-local/stream_server.py) — sole inference path
+    local_vision_base_url: str = field(
+        default_factory=lambda: os.getenv(
+            "LOCAL_VISION_BASE_URL", "http://127.0.0.1:8001"
+        ).rstrip("/")
+    )
+    local_vision_model: str = field(
+        default_factory=lambda: os.getenv(
+            "LOCAL_VISION_MODEL",
+            str(DEFAULT_LOCAL_WEIGHTS),
         )
     )
-    yolo_conf: float = field(default_factory=lambda: float(os.getenv("YOLO_CONF", "0.25")))
-    yolo_iou: float = field(default_factory=lambda: float(os.getenv("YOLO_IOU", "0.7")))
-    yolo_imgsz: int = field(default_factory=lambda: int(os.getenv("YOLO_IMGSZ", "640")))
+    local_vision_timeout: float = field(
+        default_factory=lambda: float(os.getenv("LOCAL_VISION_TIMEOUT", "60"))
+    )
 
     # LLM agent (OpenAI-compatible)
     openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
@@ -82,8 +88,17 @@ class Settings:
     def llm_enabled(self) -> bool:
         return bool(self.openai_api_key)
 
+    @property
+    def local_vision_model_path(self) -> Path:
+        return _resolve(self.local_vision_model)
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return a cached settings instance."""
     return Settings()
+
+
+def reset_settings() -> None:
+    """Clear the settings cache (used by tests)."""
+    get_settings.cache_clear()

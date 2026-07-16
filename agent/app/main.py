@@ -1,6 +1,6 @@
 """FastAPI application entrypoint.
 
-Run from the ``backend`` directory:
+Run from the ``agent`` directory:
 
     uvicorn app.main:app --reload --port 8000
 """
@@ -14,20 +14,19 @@ from app import __version__
 from app.config import get_settings
 from app.routers import audit_router, chat_router, database_router
 
-settings = get_settings()
-
 app = FastAPI(
     title="YOLO Retail AI Agent — Backend",
     description=(
-        "Backend API for the shelf-audit workspace: YOLOv8 gap detection, "
-        "an LLM-backed retail agent, and a lightweight record store."
+        "Backend API for the shelf-audit workspace: local YOLO vision (via "
+        "model-local), an LLM-backed retail agent, and a lightweight record store."
     ),
     version=__version__,
 )
 
+_settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,11 +46,15 @@ async def root() -> dict[str, str]:
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, object]:
     """Health probe reporting optional-feature availability."""
+    settings = get_settings()
+    weights = settings.local_vision_model_path
     return {
         "status": "ok",
         "llmEnabled": settings.llm_enabled,
-        "weightsPath": str(settings.yolo_weights_path),
-        "weightsPresent": settings.yolo_weights_path.exists(),
+        "localVisionBaseUrl": settings.local_vision_base_url,
+        "weightsPath": str(weights),
+        "weightsPresent": weights.exists(),
+        "visionBackend": "model-local",
     }
 
 

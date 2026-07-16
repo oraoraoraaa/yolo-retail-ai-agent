@@ -1,9 +1,12 @@
 # Model Local Webcam Inference
 
-These scripts run a webcam or video source through a local ONNX model and draw annotated bounding boxes.
+These scripts run a webcam or video source through a **local** ONNX/YOLO weight
+file and draw annotated bounding boxes. This is the **only** runtime vision
+backend used by the app stack (frontend stream/audit + agent audits).
 
-- `main-on-screen.py` opens a local OpenCV preview window.
-- `stream_server.py` exposes the same annotated frames to the frontend as an HTTP MJPEG stream.
+- `stream_server.py` exposes annotated frames and single-image detection as an HTTP API (port `8001`).
+- `main-on-screen.py` opens a local OpenCV preview window for manual testing.
+- `detection.py` shared helpers (camera backends, drawing, labels).
 
 ## Setup
 
@@ -11,6 +14,12 @@ Install the local model dependencies:
 
 ```bash
 uv sync
+```
+
+Default weights (repo-relative):
+
+```text
+../train/export/goods-and-gaps-chinese-2-yolo11n.onnx
 ```
 
 ## Run
@@ -23,40 +32,31 @@ Start the local stream service:
 uv run stream_server.py
 ```
 
-By default it listens on `http://localhost:8001` and uses `../train/export/goods-and-gaps-chinese-2-yolo11n.onnx`.
+By default it listens on `http://localhost:8001`.
 Open the frontend, go to **Camera Stream**, select the camera, and click **Start streaming**.
 
 Available stream endpoints:
 
-- `GET /api/v1/stream/cameras`: probe local OpenCV camera indices.
-- `GET /api/v1/stream/models`: list selectable local model weights.
-- `POST /api/v1/stream/start`: start inference, for example `{ "camera": "0" }`.
+- `GET /health`: service + weights status.
+- `GET /api/v1/stream/cameras`: probe local OpenCV camera indices (macOS / Linux / Windows backends).
+- `GET /api/v1/stream/models`: list selectable local model weights under `train/export/`.
+- `POST /api/v1/stream/start`: JSON `{ "camera": "0" }` starts annotated streaming.
 - `GET /api/v1/stream/video`: MJPEG stream of annotated frames.
 - `POST /api/v1/stream/stop`: stop the active camera stream.
-- `POST /api/v1/detect/image`: run one uploaded image through the local model and return detection JSON plus an annotated image data URL.
-- `POST /api/v1/detect/capture`: capture one frame from a selected camera, run detection, and return detection JSON plus an annotated image data URL.
+- `POST /api/v1/detect/image`: JSON image payload → annotated image + detection JSON.
+- `POST /api/v1/detect/capture`: JSON `{ camera, model }` → one camera capture detection.
 
 ### Window on-screen Test
 
-Pass the local ONNX file path with `--weights`:
-
 ```bash
-uv run main-on-screen.py --weights /path/to/model.onnx
+uv run main-on-screen.py --weights ../train/export/goods-and-gaps-chinese-2-yolo11n.onnx
 ```
 
-Or run with default path(`../train/export/goods-and-gaps-chinese-2-yolo11n.onnx`):
+Or with the default path:
 
 ```bash
-uv run main-on-screen.py --camera <camera_number>
+uv run main-on-screen.py --camera 0
 ```
-
-Choose a specific camera:
-
-```bash
-uv run main-on-screen.py --weights /path/to/model.onnx --camera 0
-```
-
-On Linux, OpenCV camera index `0` maps to `/dev/video0`, `1` maps to `/dev/video1`, and so on.
 
 ## Options
 
@@ -65,7 +65,7 @@ uv run main-on-screen.py --help
 ```
 
 - `--camera`: OpenCV camera index, device path, video file, or stream URL. Defaults to `0`.
-- `--weights`: Required path to a local ONNX model file.
+- `--weights`: Path to a local ONNX/YOLO model file.
 - `--imgsz`: Inference image size. Defaults to `640`.
 - `--conf`: Confidence threshold. Defaults to `0.25`.
 - `--iou`: IoU threshold for NMS. Defaults to `0.7`.
@@ -74,3 +74,20 @@ uv run main-on-screen.py --help
 - `--max-fps`: Maximum inference FPS. Defaults to `30`.
 
 Press `q` in the display window to stop the stream.
+
+## Camera backends
+
+`detection.open_video_capture` / `probe_camera_index` try platform-appropriate
+backends:
+
+| OS | Preferred backend | Fallback |
+| --- | --- | --- |
+| Linux | `CAP_V4L2` | `CAP_ANY` |
+| macOS | `CAP_AVFOUNDATION` | `CAP_ANY` |
+| Windows | `CAP_DSHOW` / `CAP_MSMF` | `CAP_ANY` |
+
+## Tests
+
+```bash
+python -m pytest tests
+```

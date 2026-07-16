@@ -18,7 +18,13 @@ import numpy as np
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
-from detection import draw_predictions, get_detection_names, open_video_capture, parse_video_reference
+from detection import (
+    draw_predictions,
+    get_detection_names,
+    open_video_capture,
+    parse_video_reference,
+    probe_camera_index,
+)
 
 DEFAULT_WEIGHTS = (
     Path(__file__).resolve().parent.parent
@@ -279,12 +285,8 @@ def run_detection(frame, options: StreamOptions) -> dict[str, Any]:
 def probe_cameras(limit: int) -> list[dict[str, str]]:
     cameras: list[dict[str, str]] = []
     for index in range(limit):
-        capture = cv2.VideoCapture(index, cv2.CAP_V4L2)
-        try:
-            if capture.isOpened():
-                cameras.append({"id": str(index), "label": f"Camera {index}"})
-        finally:
-            capture.release()
+        if probe_camera_index(index):
+            cameras.append({"id": str(index), "label": f"Camera {index}"})
     return cameras
 
 
@@ -296,6 +298,16 @@ def available_models() -> list[dict[str, str]]:
             "path": str(DEFAULT_WEIGHTS),
         }
     ]
+    export_dir = DEFAULT_WEIGHTS.parent
+    if export_dir.exists():
+        for path in sorted(export_dir.glob("*.onnx")):
+            resolved = str(path.resolve())
+            if resolved == str(DEFAULT_WEIGHTS.resolve()):
+                continue
+            models.append({"id": resolved, "label": path.name, "path": resolved})
+        for path in sorted(export_dir.glob("*.pt")):
+            resolved = str(path.resolve())
+            models.append({"id": resolved, "label": path.name, "path": resolved})
     return models
 
 
@@ -332,7 +344,14 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/health":
-            self._send_json({"status": "ok"})
+            self._send_json(
+                {
+                    "status": "ok",
+                    "visionBackend": "local-weights",
+                    "defaultWeights": str(DEFAULT_WEIGHTS),
+                    "weightsPresent": DEFAULT_WEIGHTS.exists(),
+                }
+            )
         elif path == "/api/v1/stream/cameras":
             cameras = probe_cameras(limit=10)
             self._send_json(
@@ -475,6 +494,7 @@ def main() -> None:
     args = build_parser().parse_args()
     server = ThreadingHTTPServer((args.host, args.port), StreamRequestHandler)
     print(f"Streaming API listening on http://{args.host}:{args.port}")
+    print(f"Default local weights: {DEFAULT_WEIGHTS}")
     print("Open the frontend stream page, select a camera, and click Start streaming.")
     try:
         server.serve_forever()

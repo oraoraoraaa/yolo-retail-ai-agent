@@ -32,7 +32,7 @@ Due to the vast variety of products, this project inherently faces an extreme ma
 
 ### I. Training a Binary "Gap Detection" Model
 
-Instead of forcing the model to differentiate between hundreds of different brands (e.g., Coke vs. Pepsi), a lightweight object detection architecture like **YOLOv8** is trained to detect only two states:
+Instead of forcing the model to differentiate between hundreds of different brands (e.g., Coke vs. Pepsi), a lightweight object detection architecture like **YOLOv8 / YOLO11** is trained to detect only two states:
 
 1. `Product`
 2. `Empty Shelf Space (Gap)`
@@ -50,7 +50,7 @@ A digital map of the store layout (the planogram) is created. This database maps
 |  Shelf 2  [Product]      ┌───────────┐   [Product]    |
 |                          │   GAP     │                |
 |                          │ (X, Y)    │ <─── Match with| Planogram!
-+--------------------------└───────────┘----------------+ 
++--------------------------└───────────┘----------------+
 |  Shelf 3  [Product]       [Product]      [Product]    |
 +-------------------------------------------------------+
 ```
@@ -91,4 +91,31 @@ For the 200 local stores images, use the following workflow:
 
 Directly use a dataset with gaps labeled. The dataset can be downloaded using this [python script](../dataset/sku-gap-700img-yolov8.py).
 
-To see more information, or train, validate, and predict using this model, navigate to [model/gap-detection](../model/gap-detection).
+### II. Training, export, and local inference
+
+Train / validate / predict / export scripts live under [`train/`](../train/):
+
+```bash
+cd train
+pip install -r requirements.txt
+python train.py --dataset-dir ../dataset/goods-and-gaps-chinese-2 --model yolo11n.pt
+python export.py --weights artifacts/<dataset>/train/weights/best.pt --format onnx
+```
+
+Exported local weights used by the app are stored under:
+
+```text
+train/export/goods-and-gaps-chinese-2-yolo11n.onnx
+```
+
+**All runtime vision requests** (camera stream, image audit, agent image analysis)
+are processed by [`model-local/`](../model-local) using those local weight files:
+
+```bash
+cd model-local
+uv sync
+uv run stream_server.py   # http://127.0.0.1:8001
+```
+
+The agent backend (`agent/`) never loads the detector itself; it forwards
+images to model-local. Roboflow cloud inference is not part of the app path.

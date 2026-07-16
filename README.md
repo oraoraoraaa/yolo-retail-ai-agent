@@ -14,23 +14,69 @@ See [instruction](doc/instruction.md).
 
 - [DEVELOPING RULES](./doc/developing_rules.md)
 
-## Frontend
+## Architecture
 
-Shelf audit workspace UI (image upload + agent chat). Backend responses are stubbed until the API is ready.
+All vision inference uses **local weight files** via `model-local/`:
 
-See [frontend/README.md](frontend/README.md).
+```text
+frontend (:5173)
+  ├─ stream / detect ──► model-local (:8001) ──► train/export/*.onnx
+  └─ chat / agent     ──► agent (:8000) ──► model-local for image audits
+```
+
+Default weights: `train/export/goods-and-gaps-chinese-2-yolo11n.onnx`
+
+## Quick start
+
+### 1. Local vision service
+
+```bash
+cd model-local
+uv sync
+uv run stream_server.py
+```
+
+### 2. Agent backend
+
+```bash
+cd agent
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --port 8000
+```
+
+### 3. Frontend
 
 ```bash
 cd frontend
+cp .env.example .env
+# set VITE_API_BASE_URL=http://localhost:8000
+# set VITE_STREAM_BASE_URL=http://localhost:8001
 npm install
 npm run dev
 ```
 
-## Roboflow API Key
+Open `http://localhost:5173`.
 
-You would need the Roboflow API key to download the dataset using the scripts inside the `dataset` folder:
+## Frontend
 
-- [sku-1kimg-yolov8.py](dataset/sku-1kimg-yolov8.py)
-- [sku-gap-700img-yolov8.py](dataset/sku-gap-700img-yolov8.py)
+Shelf audit workspace UI (camera stream, image audit, agent chat, database).
 
-To find your API, navigate to the [Roboflow Docs: Find Your Roboflow API Key](https://docs.roboflow.com/developer/authentication/find-your-roboflow-api-key).
+See [frontend/README.md](frontend/README.md).
+
+## Training & datasets
+
+- Training scripts: [train/README.md](train/README.md)
+- Dataset download (Roboflow API key required for download only):
+  - [sku-1kimg-yolov8.py](dataset/sku-1kimg-yolov8.py)
+  - [sku-gap-700img-yolov8.py](dataset/sku-gap-700img-yolov8.py)
+
+To find your Roboflow API key: [Roboflow Docs](https://docs.roboflow.com/developer/authentication/find-your-roboflow-api-key).
+
+## Tests
+
+```bash
+cd agent && pytest
+cd model-local && uv run pytest tests
+```

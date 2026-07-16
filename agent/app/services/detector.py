@@ -1,16 +1,18 @@
-"""YOLOv8 gap-detection wrapper.
+"""Client for the local vision service (`model-local/stream_server.py`).
 
-Loads the trained weights lazily and runs inference on an uploaded shelf image.
-When ultralytics is not installed or the weights file is missing, the detector
-reports itself as unavailable so callers can fall back to a placeholder response
-instead of crashing.
+All shelf vision inference is performed by the model-local process using local
+weight files (ONNX / YOLO). This module never loads Ultralytics itself — it only
+forwards images to the local HTTP API and normalizes the response.
 """
 
 from __future__ import annotations
 
-import io
+import base64
 import threading
 from dataclasses import dataclass, field
+from typing import Any
+
+import httpx
 
 from app.config import Settings, get_settings
 
@@ -30,6 +32,7 @@ class GapDetectionResult:
     available: bool
     detections: list[Detection] = field(default_factory=list)
     unavailable_reason: str | None = None
+    vision_model_response: dict[str, Any] | None = None
 
     @property
     def gap_count(self) -> int:
@@ -45,81 +48,80 @@ class GapDetectionResult:
 
 
 class GapDetector:
-    """Thin, thread-safe wrapper around an ultralytics ``YOLO`` model."""
+    """HTTP client for the local model-local vision service."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._lock = threading.Lock()
-        self._model = None
-        self._load_error: str | None = None
-        self._loaded = False
 
-    def _ensure_loaded(self) -> None:
-        if self._loaded:
-            return
-        with self._lock:
-            if self._loaded:
-                return
-            self._loaded = True
+    def _detect_url(self) -> str:
+        return f"{self._settings.local_vision_base_url}/api/v1/detect/image"
 
-            weights = self._settings.yolo_weights_path
-            if not weights.exists():
-                self._load_error = (
-                    f"Weights not found at '{weights}'. Train the model or set "
-                    "YOLO_WEIGHTS_PATH to enable real detection."
-                )
-                return
+    def _health_url(self) -> str:
+        return f"{self._settings.local_vision_base_url}/health"
 
-            try:
-                from ultralytics import YOLO
-            except ImportError:
-                self._load_error = (
-                    "ultralytics is not installed. Run "
-                    "`pip install -r ../model/gap-detection/requirements.txt` "
-                    "to enable real detection."
-                )
-                return
-
-            try:
-                self._model = YOLO(str(weights))
-            except Exception as exc:  # pragma: no cover - defensive
-                self._load_error = f"Failed to load YOLO weights: {exc}"
-
-    def analyze(self, image_bytes: bytes) -> GapDetectionResult:
-        """Run detection on raw image bytes."""
-        self._ensure_loaded()
-        if self._model is None:
-            return GapDetectionResult(available=False, unavailable_reason=self._load_error)
-
-        try:
-            from PIL import Image
-
-            image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        except Exception as exc:  # pragma: no cover - defensive
+    def analyze(self, image_bytes: bytes, model: str | None = None) -> GapDetectionResult:
+        """Run detection on raw image bytes via the local vision service."""
+        if not image_bytes:
             return GapDetectionResult(
                 available=False,
-                unavailable_reason=f"Could not decode uploaded image: {exc}",
+                unavailable_reason="Uploaded image is empty.",
             )
 
-        results = self._model.predict(
-            source=image,
-            imgsz=self._settings.yolo_imgsz,
-            conf=self._settings.yolo_conf,
-            iou=self._settings.yolo_iou,
-            verbose=False,
-        )
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        payload: dict[str, Any] = {
+            "imageBase64": f"data:image/jpeg;base64,{encoded}",
+        }
+        weights = model or self._settings.local_vision_model
+        if weights:
+            payload["model"] = weights
 
+        try:
+            with httpx.Client(timeout=self._settings.local_vision_timeout) as client:
+                response = client.post(self._detect_url(), json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as exc:
+            detail = ""
+            try:
+                detail = exc.response.text
+            except Exception:  # pragma: no cover - defensive
+                detail = str(exc)
+            return GapDetectionResult(
+                available=False,
+                unavailable_reason=(
+                    "Local vision service rejected the request "
+                    f"({exc.response.status_code}): {detail or exc}"
+                ),
+            )
+        except Exception as exc:
+            return GapDetectionResult(
+                available=False,
+                unavailable_reason=(
+                    "Local vision service is unavailable at "
+                    f"'{self._settings.local_vision_base_url}'. "
+                    "Start model-local with `uv run stream_server.py`. "
+                    f"Details: {exc}"
+                ),
+            )
+
+        detections_raw = data.get("detections") or []
         detections: list[Detection] = []
-        for result in results:
-            names = result.names
-            boxes = getattr(result, "boxes", None)
-            if boxes is None:
+        for item in detections_raw:
+            if not isinstance(item, dict):
                 continue
-            for cls_id, conf in zip(boxes.cls.tolist(), boxes.conf.tolist()):
-                label = names.get(int(cls_id), str(int(cls_id))) if isinstance(names, dict) else str(int(cls_id))
-                detections.append(Detection(label=label, confidence=float(conf)))
+            label = str(item.get("label") or "object")
+            try:
+                confidence = float(item.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            detections.append(Detection(label=label, confidence=confidence))
 
-        return GapDetectionResult(available=True, detections=detections)
+        return GapDetectionResult(
+            available=True,
+            detections=detections,
+            vision_model_response=data if isinstance(data, dict) else None,
+        )
 
 
 _detector: GapDetector | None = None
@@ -131,3 +133,9 @@ def get_detector() -> GapDetector:
     if _detector is None:
         _detector = GapDetector(get_settings())
     return _detector
+
+
+def reset_detector() -> None:
+    """Clear the singleton (used by tests)."""
+    global _detector
+    _detector = None

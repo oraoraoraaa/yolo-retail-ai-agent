@@ -285,6 +285,20 @@ class RetailAgent:
             self._offline_detection_explanation(total, gaps, products, language),
         )
 
+    def _offline_detection_action(self, gaps: int, total: int, language: str) -> str:
+        """Short offline recommended action derived from detector counts."""
+        if language == "zh":
+            if total == 0:
+                return "检查摄像头与货架可见性"
+            if gaps == 0:
+                return "无需操作"
+            return f"补货 {gaps} 个空位"
+        if total == 0:
+            return "Check camera and shelf visibility"
+        if gaps == 0:
+            return "No action needed"
+        return f"Restock {gaps} gap(s)"
+
     def _offline_detection_explanation(
         self,
         total: int,

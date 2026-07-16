@@ -39,7 +39,7 @@ Minimum knowledge expected:
 1. Clone this repository in proper place:
 
     ```sh
-    git clone https://github.com/oraoraoraaa/picking-up-optimization.git
+    git clone https://github.com/oraoraoraaa/yolo-retail-ai-agent.git
     ```
 
 2. Use Visual Studio Code to open the repository folder.
@@ -70,11 +70,11 @@ Before making commits, learn and use the format correctly.
 
 Examples:
 
-- `feat: add traffic congestion scoring`
-- `fix: handle empty route result from amap client`
-- `docs: update setup instructions`
-- `refactor: simplify pickup candidate filtering`
-- `test: add unit tests for route estimator`
+- `feat: add planogram slot matching for gap detections`
+- `fix: fall back to CAP_ANY when macOS camera probe fails`
+- `docs: update local vision setup instructions`
+- `refactor: route agent audits through model-local`
+- `test: add unit tests for offline audit actions`
 
 ## 2. Main Branch Protection
 
@@ -90,9 +90,9 @@ Always:
 
 Example branch naming:
 
-- `feat/optimize-pickup-point`
-- `fix/amap-timeout-handling`
-- `docs/contributing-guide`
+- `feat/planogram-lookup`
+- `fix/macos-camera-backends`
+- `docs/local-vision-path`
 
 ## 3. Follow Documentation
 
@@ -101,5 +101,11 @@ Each folder and sub-folder are equipped with detailed instruction documentation 
 Read them thoroughly before you make any contribution.
 
 Again, if any of the changes does not fit in the guideline addressed in the documentation, it would be desk-rejected during review.
+
+## 4. Local vision rule
+
+All vision-model-related requests in the application stack **must** use local weight
+files via `model-local/` (`stream_server.py`). Do not reintroduce cloud-only
+inference (e.g. Roboflow runtime) into the agent or frontend paths.
 
 ## That's All, Happy Coding

@@ -4,7 +4,7 @@ React + TypeScript + Vite workspace UI for live shelf streaming, shelf image aud
 
 ## Features
 
-- **Camera Stream:** select a local camera from `model-local/stream_server.py` and view live YOLO bounding boxes.
+- **Camera Stream:** select a local camera from `model-local/stream_server.py` and view live YOLO bounding boxes (local weight files).
 - **Shelf Audit:** upload a local shelf image or run low-frequency camera monitoring; send detector JSON to the agent and display the suggested action and explanation.
 - **Agent Chat:** chat with the retail agent; assistant replies render as Markdown (bold, lists, headings, code, tables via GFM).
 - **API stubs:** when `VITE_API_BASE_URL` is empty, chat returns a sample Markdown reply so formatting can be verified offline.
@@ -14,7 +14,7 @@ React + TypeScript + Vite workspace UI for live shelf streaming, shelf image aud
 ```text
 src/
   api/           HTTP client + endpoint modules (stubs when offline)
-  components/    layout, audit panel, chat panel
+  components/    layout, audit panel, chat panel, stream panel
   hooks/         audit + chat state orchestration
   lib/           small utilities
   styles/        design tokens + global styles
@@ -23,23 +23,18 @@ src/
 
 ## Environment
 
-Copy the example env file (already present as `.env` for local use):
-
 ```bash
 cp .env.example .env
 ```
 
 | Variable | Description |
 | --- | --- |
-| `VITE_API_BASE_URL` | Backend origin. Leave empty to use stubs. Example: `http://localhost:8000` |
+| `VITE_API_BASE_URL` | Agent backend origin. Leave empty to use chat/database stubs. Example: `http://localhost:8000` |
 | `VITE_STREAM_BASE_URL` | Local model stream service origin. Defaults to `http://localhost:8001` |
 
-Planned backend routes:
+### Vision path (local weights only)
 
-- `POST /api/v1/audit/analyze` — multipart field `image` → `{ suggestedAction, explanation }`
-- `POST /api/v1/agent/chat` — JSON `{ message, history }` → `{ reply }`
-
-Local model stream routes, served by `../model-local/stream_server.py`:
+All vision requests go to `model-local` (local ONNX/YOLO weights under `train/export/`):
 
 - `GET /api/v1/stream/cameras` — probe OpenCV camera indices.
 - `GET /api/v1/stream/models` — list selectable local model weights.
@@ -49,13 +44,14 @@ Local model stream routes, served by `../model-local/stream_server.py`:
 - `POST /api/v1/detect/image` — JSON image payload → annotated image + detection JSON.
 - `POST /api/v1/detect/capture` — JSON `{ camera, model }` → one camera capture detection.
 
-The Shelf Audit agent step sends local detector JSON to `POST /api/v1/audit/analyze-detections`. The agent uses the configured LLM when available and falls back to deterministic offline analysis otherwise. Planogram lookup currently returns `null`.
+The Shelf Audit agent step sends local detector JSON to the agent backend
+`POST /api/v1/audit/analyze-detections`. Planogram lookup currently returns `null`.
 
 Vite also proxies `/api` → `http://localhost:8000` during local development when you switch the client to relative paths later.
 
 ## Setup
 
-Requires Node.js 20+. Markdown chat rendering uses `react-markdown` + `remark-gfm` (installed into this frontend Node environment only).
+Requires Node.js 20+. Markdown chat rendering uses `react-markdown` + `remark-gfm`.
 
 ```bash
 cd frontend
@@ -63,12 +59,20 @@ npm ci   # or: npm install
 npm run dev
 ```
 
-For the live camera page, run the model stream service in another terminal:
+For the live camera / audit detection path, run the model stream service:
 
 ```bash
 cd ../model-local
 uv sync
 uv run stream_server.py
+```
+
+For agent chat / LLM narratives:
+
+```bash
+cd ../agent
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
 Other scripts:

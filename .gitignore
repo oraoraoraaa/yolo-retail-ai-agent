@@ -60,8 +60,6 @@ agent/node_modules
 agent/dist
 agent/dist-ssr
 agent/*.local
-agent/.env
-agent/.env.*.local
 agent/logs
 agent/*.log
 agent/npm-debug.log*
@@ -70,3 +68,13 @@ agent/yarn-error.log*
 agent/pnpm-debug.log*
 agent/lerna-debug.log*
 agent/.next
+agent/.pytest_cache
+agent/.coverage
+agent/htmlcov
+
+# model-local tests / caches
+model-local/.pytest_cache
+model-local/tests/__pycache__
+
+# roboflow local cache
+model-roboflow/model-cache/

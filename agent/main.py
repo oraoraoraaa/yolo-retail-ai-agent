@@ -1,5 +1,5 @@
 def main():
-    print("Hello from model-roboflow!")
+    print("Hello from agent!")
 
 
 if __name__ == "__main__":

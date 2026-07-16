@@ -1,6 +1,6 @@
 /**
- * Shared HTTP helpers for talking to the backend.
- * Endpoints are not implemented yet; callers may still rely on stubs.
+ * Shared HTTP helpers for talking to the agent backend.
+ * When VITE_API_BASE_URL is empty, individual API modules use offline stubs.
  */
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? ''

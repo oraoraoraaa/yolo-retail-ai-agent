@@ -36,20 +36,20 @@
 
 1. 在合适的位置克隆此仓库：
 
- ```sh
- git clone https://github.com/oraoraoraaa/picking-up-optimization.git
- ```
+    ```sh
+    git clone https://github.com/oraoraoraaa/yolo-retail-ai-agent.git
+    ```
 
-1. 使用 Visual Studio Code 打开仓库文件夹。
+2. 使用 Visual Studio Code 打开仓库文件夹。
 
-2. 使用图形界面管理 Git 控件。
+3. 使用图形界面管理 Git 控件。
 
 #### 命令行 Git（不推荐新手使用）
 
 1. `git checkout main`
 2. `git pull origin main`
 3. `git checkout -b feat/your-change`
-4. 进行修改
+4. 修改代码
 5. `git add .`
 6. `git commit -m "feat: describe your change"`
 7. `git push -u origin feat/your-change`
@@ -59,45 +59,47 @@
 
 ## 1. 提交信息规范
 
-所有提交都必须遵循 Conventional Commits 规范：
+所有提交必须遵循 Conventional Commits 规范：
 `https://www.conventionalcommits.org/en/v1.0.0/`
 
-不符合该规范的拉取请求在审查时很可能会被直接拒绝。
-
-在提交之前，请先学习并正确使用这种格式。
+不遵循该规范的 PR 在审查阶段很可能会被直接拒绝。
 
 示例：
 
-- `feat: add traffic congestion scoring`
-- `fix: handle empty route result from amap client`
-- `docs: update setup instructions`
-- `refactor: simplify pickup candidate filtering`
-- `test: add unit tests for route estimator`
+- `feat: add planogram slot matching for gap detections`
+- `fix: fall back to CAP_ANY when macOS camera probe fails`
+- `docs: update local vision setup instructions`
+- `refactor: route agent audits through model-local`
+- `test: add unit tests for offline audit actions`
 
 ## 2. 主分支保护
 
-`main` 受 GitHub rulesets 保护。不要直接推送到 `main`，也不要尝试直接推送到 `main`。
+`main` 受 GitHub rulesets 保护。不要、也不要尝试直接推送到 `main`。
 
-始终按以下步骤操作：
+始终：
 
-1. 拉取最新的 `main`。
-2. 创建并切换到功能分支。
-3. 在功能分支上提交。
-4. 将分支推送到远程。
-5. 向 `main` 打开拉取请求。
+1. 拉取最新 `main`
+2. 创建并切换到功能分支
+3. 在功能分支提交
+4. 推送到远端
+5. 向 `main` 发起 PR
 
 分支命名示例：
 
-- `feat/optimize-pickup-point`
-- `fix/amap-timeout-handling`
-- `docs/contributing-guide`
+- `feat/planogram-lookup`
+- `fix/macos-camera-backends`
+- `docs/local-vision-path`
 
 ## 3. 遵循文档
 
-每个文件夹及其子文件夹都配有对应的 `README.md`，其中包含详细的说明文档。
+每个文件夹与子文件夹都有对应的 `README.md` 说明。贡献前请先完整阅读。
 
-在进行任何贡献之前，请认真阅读这些文档。
+若改动不符合文档约定，审查阶段可能被直接拒绝。
 
-同样地，如果你的改动不符合文档中给出的规范，在审查时也会被直接拒绝。
+## 4. 本地视觉模型规则
 
-## 就这些，祝你编码愉快
+应用链路中所有视觉推理请求 **必须** 通过 `model-local/` 使用本地权重文件
+（`stream_server.py`）。不要把云端推理（例如 Roboflow runtime）重新接入
+agent 或 frontend 路径。
+
+## 就这些，祝编码愉快

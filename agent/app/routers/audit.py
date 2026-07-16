@@ -1,7 +1,11 @@
 """Shelf-image audit endpoint.
 
-``POST /api/v1/audit/analyze`` accepts a multipart ``image`` field and returns
-``{ suggestedAction, explanation }``.
+``POST /api/v1/audit/analyze`` accepts a multipart ``image`` field, forwards it
+to the local model-local vision service (local weight files), then returns an
+agent narrative: ``{ suggestedAction, explanation }``.
+
+``POST /api/v1/audit/analyze-detections`` accepts precomputed local vision JSON
+(also produced by model-local) and returns the same narrative shape.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ _ALLOWED_PREFIX = "image/"
 
 @router.post("/analyze", response_model=AuditAnalysisResult)
 async def analyze_shelf_image(image: UploadFile = File(...)) -> AuditAnalysisResult:
-    """Run gap detection on an uploaded shelf image."""
+    """Run gap detection on an uploaded shelf image via model-local."""
     if image.content_type and not image.content_type.startswith(_ALLOWED_PREFIX):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -36,7 +40,13 @@ async def analyze_shelf_image(image: UploadFile = File(...)) -> AuditAnalysisRes
     detection = detector.analyze(image_bytes)
 
     agent = get_agent()
-    suggested_action, explanation = agent.summarize_audit(detection)
+    if detection.available and detection.vision_model_response is not None:
+        suggested_action, explanation = agent.summarize_detection_json(
+            detection.vision_model_response,
+            planogram_response=None,
+        )
+    else:
+        suggested_action, explanation = agent.summarize_audit(detection)
 
     if detection.available:
         get_store().add(
@@ -50,7 +60,11 @@ async def analyze_shelf_image(image: UploadFile = File(...)) -> AuditAnalysisRes
 
 @router.post("/analyze-detections", response_model=AuditAnalysisResult)
 async def analyze_detection_json(payload: DetectionAgentRequest) -> AuditAnalysisResult:
-    """Analyze local vision-model JSON with the retail agent."""
+    """Analyze local vision-model JSON with the retail agent.
+
+    The vision JSON is expected to come from model-local
+    (``POST /api/v1/detect/image`` or ``/capture``).
+    """
     agent = get_agent()
     suggested_action, explanation = agent.summarize_detection_json(
         payload.vision_model_response,

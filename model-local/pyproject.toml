@@ -2,12 +2,13 @@
 name = "model-local"
 version = "0.1.0"
 description = "Script to run real-time streaming detection using a local weight file."
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "onnx>=1.22.0",
-    "onnxruntime>=1.27.0",
-    "onnxruntime-gpu>=1.27.0",
-    "opencv-python>=5.0.0.93",
-    "supervision>=0.29.1",
-    "ultralytics>=8.4.96",
+    "onnx>=1.17.0",
+    "onnxruntime>=1.19.0; sys_platform != 'win32' or platform_machine != 'ARM64'",
+    "onnxruntime-gpu>=1.19.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "opencv-python-headless>=4.10.0",
+    "pytest>=8.0",
+    "supervision>=0.25.0",
+    "ultralytics>=8.3.0",
 ]
