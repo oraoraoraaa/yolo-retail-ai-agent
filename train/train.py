@@ -5,15 +5,23 @@ from pathlib import Path
 
 from common import (
     DEFAULT_DATASET_DIR,
+    DEFAULT_MODEL_NAME,
     DEFAULT_WEIGHTS,
     prepare_detection_dataset,
     resolve_data_yaml,
     resolve_project_dir,
 )
+from imbalance import DEFAULT_IMBALANCE_POLICY, format_class_counts, summarize_split
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train a YOLO detector.")
+    policy = DEFAULT_IMBALANCE_POLICY
+    parser = argparse.ArgumentParser(
+        description=(
+            "Train a YOLO detector for shelf gap/product detection. "
+            "See imbalance.py and train/README.md for class-imbalance guidance."
+        )
+    )
     parser.add_argument(
         "--dataset-dir",
         type=Path,
@@ -26,7 +34,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("data.yaml"),
         help="Dataset YAML file, relative to --dataset-dir or an absolute path.",
     )
-    parser.add_argument("--model", default=DEFAULT_WEIGHTS, help="Base YOLO checkpoint to fine-tune.")
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_WEIGHTS,
+        help=(
+            f"Base YOLO checkpoint to fine-tune (default: {DEFAULT_MODEL_NAME}). "
+            "Recommended for merged-gap-product / dense shelves: yolo11m. "
+            "Use yolo11n only for smoke tests or tight edge budgets."
+        ),
+    )
     parser.add_argument(
         "--epochs", type=int, default=100, help="Number of training epochs."
     )
@@ -112,11 +128,74 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Resume from the last checkpoint in the run directory.",
     )
+    # --- class imbalance (gap rare vs product) ---
+    parser.add_argument(
+        "--balance-gaps",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Apply the default rare-gap mitigation policy: oversample train images "
+            f"that contain gaps (x{policy.gap_image_oversample} extra) and enable "
+            f"light copy_paste={policy.copy_paste}. See imbalance.py / train/README.md. "
+            "Use --no-balance-gaps to disable."
+        ),
+    )
+    parser.add_argument(
+        "--gap-image-oversample",
+        type=int,
+        default=None,
+        help=(
+            "Extra copies of each train image that contains ≥1 gap box "
+            f"(default from policy when --balance-gaps: {policy.gap_image_oversample}; "
+            "0 disables oversampling)."
+        ),
+    )
+    parser.add_argument(
+        "--cls",
+        type=float,
+        default=None,
+        help=(
+            "Ultralytics classification loss gain. Raise above 0.5 if the head "
+            f"collapses to the product class (policy default {policy.cls_loss_gain})."
+        ),
+    )
+    parser.add_argument(
+        "--copy-paste",
+        type=float,
+        default=None,
+        help=(
+            "Copy-paste augmentation probability "
+            f"(policy default {policy.copy_paste} when --balance-gaps)."
+        ),
+    )
     return parser
+
+
+def resolve_imbalance_knobs(args: argparse.Namespace) -> dict[str, float | int]:
+    """Map CLI flags + DEFAULT_IMBALANCE_POLICY into concrete train knobs."""
+    policy = DEFAULT_IMBALANCE_POLICY
+    if args.balance_gaps:
+        gap_oversample = (
+            policy.gap_image_oversample
+            if args.gap_image_oversample is None
+            else args.gap_image_oversample
+        )
+        copy_paste = policy.copy_paste if args.copy_paste is None else args.copy_paste
+        cls_gain = policy.cls_loss_gain if args.cls is None else args.cls
+    else:
+        gap_oversample = 0 if args.gap_image_oversample is None else args.gap_image_oversample
+        copy_paste = 0.0 if args.copy_paste is None else args.copy_paste
+        cls_gain = 0.5 if args.cls is None else args.cls  # Ultralytics default-ish
+    return {
+        "gap_image_oversample": int(gap_oversample),
+        "copy_paste": float(copy_paste),
+        "cls": float(cls_gain),
+    }
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    knobs = resolve_imbalance_knobs(args)
 
     data_yaml = resolve_data_yaml(args.dataset_dir, args.data)
     project_dir = resolve_project_dir(args.dataset_dir, args.project)
@@ -124,7 +203,28 @@ def main() -> None:
     training_data_yaml = (
         data_yaml
         if args.no_prepare_detection
-        else prepare_detection_dataset(data_yaml, project_dir / "_prepared_detection")
+        else prepare_detection_dataset(
+            data_yaml,
+            project_dir / "_prepared_detection",
+            gap_image_oversample=int(knobs["gap_image_oversample"]),
+        )
+    )
+
+    # Print a quick class-count snapshot so imbalance is visible before the long train.
+    try:
+        train_images = Path(training_data_yaml).parent / "train" / "images"
+        if train_images.exists():
+            print(
+                "Train split class counts (after prep/oversample): "
+                + format_class_counts(summarize_split(train_images))
+            )
+    except Exception as exc:  # pragma: no cover - best-effort diagnostics
+        print(f"Could not summarize class counts: {exc}")
+
+    print(
+        "Imbalance knobs: "
+        f"gap_image_oversample={knobs['gap_image_oversample']} "
+        f"copy_paste={knobs['copy_paste']} cls={knobs['cls']}"
     )
 
     try:
@@ -135,7 +235,7 @@ def main() -> None:
         ) from exc
 
     model = YOLO(args.model)
-    results = model.train(
+    train_kwargs = dict(
         data=str(training_data_yaml),
         epochs=args.epochs,
         imgsz=args.imgsz,
@@ -156,11 +256,19 @@ def main() -> None:
         translate=args.translate,
         fliplr=args.fliplr,
         resume=args.resume,
+        copy_paste=knobs["copy_paste"],
+        cls=knobs["cls"],
     )
+    results = model.train(**train_kwargs)
 
     save_dir = Path(getattr(results, "save_dir", project_dir / args.name))
     print(f"Training complete. Artifacts saved to: {save_dir}")
     print(f"Best weights: {save_dir / 'weights' / 'best.pt'}")
+    print(
+        "Next: write an eval report with recommended gap conf thresholds:\n"
+        f"  uv run python eval_report.py --dataset-dir {args.dataset_dir} "
+        f"--weights {save_dir / 'weights' / 'best.pt'} --split val"
+    )
 
 
 if __name__ == "__main__":

@@ -11,7 +11,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_DATASET_DIR = REPO_ROOT / "dataset"
 DEFAULT_RUNS_DIR = SCRIPT_DIR / "runs"
+# Default train backbone for the ~800-image merged gap/product set (and seed set).
+# yolo11n is fine for smoke tests / edge export, but underfits dense shelf scenes once
+# we scale past the tiny fully-labeled seed. yolo11m fits a 4060 8GB at imgsz=1024
+# with batch=-1; step up to yolo11l only if VRAM allows and gap mAP plateaus.
 DEFAULT_WEIGHTS = str(SCRIPT_DIR / "yolo11m.pt")
+DEFAULT_MODEL_NAME = "yolo11m.pt"
 IMAGE_SUFFIXES = {".bmp", ".dng", ".jpeg", ".jpg", ".mpo", ".png", ".tif", ".tiff", ".webp"}
 
 
@@ -177,13 +182,23 @@ def link_or_copy(source: Path, destination: Path) -> None:
         shutil.copy2(source, destination)
 
 
-def prepare_detection_dataset(data_yaml: str | Path, output_dir: str | Path) -> Path:
+def prepare_detection_dataset(
+    data_yaml: str | Path,
+    output_dir: str | Path,
+    *,
+    gap_image_oversample: int = 0,
+) -> Path:
     """Create a YOLO detection dataset with explicit xywh labels.
 
     Roboflow exports may contain segmentation polygons even when the intended task is
     detection. This prepares a small derived dataset with images linked to the
     originals and labels converted to bounding boxes, leaving the source dataset
     untouched.
+
+    When ``gap_image_oversample`` > 0, train images that contain at least one
+    ``gap`` box (class id 0, or any class named ``gap``) are duplicated that many
+    extra times so the rare empty-slot class is seen more often. See
+    ``imbalance.py`` for the full class-imbalance policy.
     """
 
     source_yaml = ensure_path(data_yaml)
@@ -193,6 +208,12 @@ def prepare_detection_dataset(data_yaml: str | Path, output_dir: str | Path) -> 
 
     data = load_dataset_yaml(source_yaml)
     names = normalize_names(data.get("names"), data.get("nc"))
+    gap_ids = {
+        index for index, name in names.items() if str(name).strip().lower() == "gap"
+    }
+    if not gap_ids:
+        gap_ids = {0}
+
     prepared_yaml = {
         "path": str(prepared_root),
         "train": "train/images",
@@ -204,33 +225,71 @@ def prepare_detection_dataset(data_yaml: str | Path, output_dir: str | Path) -> 
 
     total_labels = 0
     converted_labels = 0
+    oversampled_images = 0
     for split_key, output_split in (("train", "train"), ("val", "valid"), ("test", "test")):
         if split_key not in data:
-            continue
+            # Roboflow YAMLs sometimes use "valid" instead of "val".
+            if split_key == "val" and "valid" in data:
+                split_key = "valid"
+            else:
+                continue
         images_dir = resolve_split_images_dir(dataset_root, source_yaml, data[split_key])
         output_images_dir = prepared_root / output_split / "images"
         output_labels_dir = prepared_root / output_split / "labels"
         output_images_dir.mkdir(parents=True, exist_ok=True)
         output_labels_dir.mkdir(parents=True, exist_ok=True)
 
-        seen_stems = set()
-        for image_path in sorted(path for path in images_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES):
-            seen_stems.add(image_path.stem)
-            link_or_copy(image_path, output_images_dir / image_path.name)
-            label_count, converted_count = convert_label_file(
-                image_to_label_path(image_path),
-                output_labels_dir / f"{image_path.stem}.txt",
-            )
-            total_labels += label_count
-            converted_labels += converted_count
+        seen_stems: set[str] = set()
+        for image_path in sorted(
+            path for path in images_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES
+        ):
+            source_label = image_to_label_path(image_path)
+            copies = 1
+            if output_split == "train" and gap_image_oversample > 0:
+                label_text = (
+                    source_label.read_text(encoding="utf-8") if source_label.exists() else ""
+                )
+                has_gap = False
+                for raw in label_text.splitlines():
+                    stripped = raw.strip()
+                    if not stripped:
+                        continue
+                    if int(float(stripped.split()[0])) in gap_ids:
+                        has_gap = True
+                        break
+                if has_gap:
+                    copies = 1 + gap_image_oversample
+                    oversampled_images += 1
+
+            for copy_index in range(copies):
+                stem = image_path.stem if copy_index == 0 else f"{image_path.stem}__gapx{copy_index}"
+                image_name = (
+                    image_path.name
+                    if copy_index == 0
+                    else f"{stem}{image_path.suffix}"
+                )
+                seen_stems.add(stem)
+                link_or_copy(image_path, output_images_dir / image_name)
+                label_count, converted_count = convert_label_file(
+                    source_label,
+                    output_labels_dir / f"{stem}.txt",
+                )
+                total_labels += label_count
+                converted_labels += converted_count
 
         for stale_label in output_labels_dir.glob("*.txt"):
             if stale_label.stem not in seen_stems:
                 stale_label.unlink()
 
     output_yaml = dump_dataset_yaml(prepared_yaml, prepared_root / "data.yaml")
+    extra = ""
+    if gap_image_oversample > 0:
+        extra = (
+            f"; gap-image oversample x{gap_image_oversample} on {oversampled_images} train images"
+        )
     print(
         "Prepared detection dataset: "
-        f"{output_yaml} ({converted_labels}/{total_labels} polygon labels converted to boxes)"
+        f"{output_yaml} ({converted_labels}/{total_labels} polygon labels converted to boxes"
+        f"{extra})"
     )
     return output_yaml

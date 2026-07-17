@@ -91,6 +91,31 @@ For the 200 local stores images, use the following workflow:
 
 Directly use a dataset with gaps labeled. The dataset can be downloaded using this [python script](../dataset/sku-gap-700img-yolov8.py).
 
+#### PLAN B+ (recommended for this repo): gap-only 700 + fully labeled seed
+
+`sku-gap-700img-1` is large (~700 images) but **gap-only**. Training two-class
+YOLO on it alone never learns `product`. Use the teacher → pseudo-label → merge
+pipeline in [`train/merge_datasets.py`](../train/merge_datasets.py):
+
+1. Teacher: detector trained on `goods-and-gaps-chinese-2` (gap + product).
+2. Pseudo-label: run teacher on every `sku-gap-700img-1` image; keep high-conf
+   product boxes that do not overlap human gaps; keep human gap boxes as-is.
+3. Merge into `dataset/merged-gap-product` and train with existing `train.py`.
+
+Class imbalance (gap rare vs product) and the eval report (mAP + gap recall +
+recommended conf thresholds) are documented in [`train/README.md`](../train/README.md).
+
+```bash
+cd train
+uv run python merge_datasets.py build \
+  --teacher-weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --device 0
+# default --model is yolo11m.pt (recommended for the enlarged merged set)
+uv run python train.py --dataset-dir ../dataset/merged-gap-product --balance-gaps --device 0
+uv run python eval_report.py --dataset-dir ../dataset/merged-gap-product \
+  --weights artifacts/merged-gap-product/train/weights/best.pt --split val
+```
+
 ### II. Training, export, and local inference
 
 Train / validate / predict / export scripts live under [`train/`](../train/):
@@ -98,7 +123,8 @@ Train / validate / predict / export scripts live under [`train/`](../train/):
 ```bash
 cd train
 uv sync
-uv run python train.py --dataset-dir ../dataset/goods-and-gaps-chinese-2 --model yolo11n.pt
+# default backbone: yolo11m.pt — use --model yolo11n.pt only for smoke/edge trials
+uv run python train.py --dataset-dir ../dataset/merged-gap-product --balance-gaps --device 0
 uv run python export.py --weights artifacts/<dataset>/train/weights/best.pt --format onnx
 ```
 

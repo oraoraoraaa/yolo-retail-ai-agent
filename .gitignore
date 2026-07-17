@@ -11,10 +11,12 @@
 *.sln
 *.sw?
 
-# dataset downloads
+# dataset downloads + generated merge roots (local only)
 dataset/sku-1kimg-1
 dataset/sku-gap-700img-1
 dataset/goods-and-gaps-chinese-2
+dataset/sku-gap-700img-1-with-products
+dataset/merged-gap-product
 
 # training artifacts / base checkpoints
 train/artifacts
