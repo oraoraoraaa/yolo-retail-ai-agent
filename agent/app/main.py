@@ -12,13 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.config import get_settings
-from app.routers import audit_router, chat_router, database_router
+from app.routers import audit_router, chat_router, database_router, planogram_router
 
 app = FastAPI(
     title="YOLO Retail AI Agent — Backend",
     description=(
         "Backend API for the shelf-audit workspace: local YOLO vision (via "
-        "model-local), an LLM-backed retail agent, and a lightweight record store."
+        "model-local), an LLM-backed retail agent, planogram grid matching, "
+        "and a lightweight record store."
     ),
     version=__version__,
 )
@@ -35,6 +36,7 @@ app.add_middleware(
 app.include_router(audit_router)
 app.include_router(chat_router)
 app.include_router(database_router)
+app.include_router(planogram_router)
 
 
 @app.get("/", tags=["meta"])

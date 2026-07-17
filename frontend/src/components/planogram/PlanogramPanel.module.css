@@ -1,0 +1,391 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: calc(100vh - 3rem);
+  padding: var(--space-5);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.92rem;
+}
+
+.actions,
+.footerActions,
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.primaryButton,
+.ghostButton {
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.95rem;
+  border: 1px solid transparent;
+  font-weight: 600;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.primaryButton {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--color-accent-strong);
+}
+
+.primaryButton:disabled,
+.ghostButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghostButton {
+  background: transparent;
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}
+
+.ghostButton:hover:not(:disabled) {
+  background: rgba(20, 32, 40, 0.04);
+}
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--space-4);
+}
+
+.card {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-strong);
+  overflow: hidden;
+}
+
+.cardActive {
+  border-color: rgba(11, 122, 110, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(11, 122, 110, 0.18);
+}
+
+.cardMedia {
+  position: relative;
+  min-height: 10rem;
+  background: #0f171c;
+}
+
+.cardImage,
+.cardImagePlaceholder {
+  width: 100%;
+  height: 10rem;
+  object-fit: cover;
+}
+
+.cardImagePlaceholder {
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+.cardOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cardSlot {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(11, 122, 110, 0.22);
+}
+
+.cardBody {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cardMeta,
+.cardDescription,
+.statusLine,
+.emptyCopy,
+.canvasHint,
+.selectedCoord,
+.regionCount,
+.clipboardHint {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.88rem;
+}
+
+.regionCount {
+  margin-top: var(--space-2);
+}
+
+.clipboardHint {
+  margin: 0 0 var(--space-3);
+}
+
+
+.emptyState {
+  display: grid;
+  gap: var(--space-3);
+  place-items: start;
+  border: 1px dashed rgba(11, 122, 110, 0.35);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  background: var(--color-surface-strong);
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.editor {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr);
+  gap: var(--space-3);
+}
+
+.fullWidth {
+  grid-column: 1 / -1;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-ink-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.7rem;
+  background: #fff;
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(16rem, 0.9fr);
+  gap: var(--space-4);
+}
+
+.canvasCard,
+.slotEditor {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-strong);
+  padding: var(--space-4);
+}
+
+.canvasToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.canvas {
+  position: relative;
+  min-height: 360px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #0f171c;
+  user-select: none;
+  touch-action: none;
+}
+
+.canvasDrawable {
+  cursor: crosshair;
+}
+
+.canvasDragging {
+  cursor: grabbing;
+}
+
+.shelfImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  object-fit: contain;
+  background: #0f171c;
+  pointer-events: none;
+}
+
+.canvasEmpty {
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  color: rgba(255, 255, 255, 0.72);
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.slotRect,
+.draftRect {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.slotRect {
+  display: grid;
+  align-content: start;
+  gap: 0.15rem;
+  padding: 0.25rem;
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  background: rgba(11, 122, 110, 0.22);
+  color: #fff;
+  text-align: left;
+  cursor: grab;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.slotRect:hover {
+  background: rgba(11, 122, 110, 0.34);
+}
+
+.slotFilled {
+  background: rgba(11, 122, 110, 0.4);
+}
+
+.slotSelected {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+  background: rgba(11, 122, 110, 0.52);
+  z-index: 2;
+}
+
+.slotDragging {
+  cursor: grabbing;
+  z-index: 4;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+.draftRect {
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.slotLabel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.boxLabel {
+  margin: 0 0 var(--space-3);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.slotFields {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.slotActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.fileInput {
+  display: none;
+}
+
+.errorLine {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 980px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+}

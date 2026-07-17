@@ -8,6 +8,15 @@ from app.schemas.database import (
     DatabaseRecord,
     DatabaseRecordType,
 )
+from app.schemas.planogram import (
+    Planogram,
+    PlanogramCreate,
+    PlanogramListResult,
+    PlanogramMatchRequest,
+    PlanogramMatchResult,
+    PlanogramSlot,
+    PlanogramUpdate,
+)
 
 __all__ = [
     "CamelModel",
@@ -19,4 +28,11 @@ __all__ = [
     "DatabaseQueryResult",
     "DatabaseRecord",
     "DatabaseRecordType",
+    "Planogram",
+    "PlanogramCreate",
+    "PlanogramListResult",
+    "PlanogramMatchRequest",
+    "PlanogramMatchResult",
+    "PlanogramSlot",
+    "PlanogramUpdate",
 ]

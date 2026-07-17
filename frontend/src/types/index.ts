@@ -8,3 +8,12 @@ export type {
   ChatRole,
 } from './chat'
 export type { DatabaseQueryParams, DatabaseQueryResult, DatabaseRecord, DatabaseRecordType } from './database'
+export type {
+  Planogram,
+  PlanogramCreatePayload,
+  PlanogramEditorMode,
+  PlanogramListResult,
+  PlanogramMatchResult,
+  PlanogramSlot,
+  PlanogramUpdatePayload,
+} from './planogram'

@@ -1,20 +1,22 @@
-import type { AuditAnalysisResult } from '@/types'
-
-import type { Language } from '@/lib/i18n'
-
-import { apiFetch, getApiBaseUrl } from './client'
-import { captureCameraDetection, detectUploadedImage, type LocalDetectionResult } from './stream'
-
-const DETECTION_AGENT_PATH = '/api/v1/audit/analyze-detections'
-
 /**
  * Upload a shelf image for gap / inventory analysis.
  *
  * The local model service returns annotated images + JSON detections. The
- * vision-model JSON is then sent to the agent backend for LLM analysis. If
- * the agent is unavailable, the frontend falls back to deterministic offline
- * analysis.
+ * vision-model JSON is then matched against the active planogram and sent to
+ * the agent backend for LLM analysis. If the agent is unavailable, the
+ * frontend falls back to deterministic offline analysis.
  */
+import type { AuditAnalysisResult } from '@/types'
+import type { PlanogramMatchResult } from '@/types/planogram'
+
+import type { Language } from '@/lib/i18n'
+
+import { apiFetch, getApiBaseUrl } from './client'
+import { getActivePlanogramId, matchPlanogramDetections } from './planogram'
+import { captureCameraDetection, detectUploadedImage, type LocalDetectionResult } from './stream'
+
+const DETECTION_AGENT_PATH = '/api/v1/audit/analyze-detections'
+
 export async function analyzeShelfImage(file: File, model: string, language: Language): Promise<AuditAnalysisResult> {
   const visionModelResponse = await detectUploadedImage(file, model)
   return analyzeVisionModelResponse(visionModelResponse, language)
@@ -46,14 +48,19 @@ async function analyzeVisionModelResponse(
   }
 }
 
-async function queryPlanogramForDetections(_visionModelResponse: LocalDetectionResult): Promise<null> {
-  // TODO: connect this to the Planogram database described in doc/instruction.md.
-  return null
+async function queryPlanogramForDetections(
+  visionModelResponse: LocalDetectionResult,
+): Promise<PlanogramMatchResult | null> {
+  const activeId = await getActivePlanogramId()
+  if (!activeId) {
+    return null
+  }
+  return matchPlanogramDetections(activeId, visionModelResponse)
 }
 
 async function requestAgentShelfRecommendation(
   visionModelResponse: LocalDetectionResult,
-  planogramResponse: null,
+  planogramResponse: PlanogramMatchResult | null,
   language: Language,
 ): Promise<Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation'>> {
   if (getApiBaseUrl()) {
@@ -76,33 +83,55 @@ async function requestAgentShelfRecommendation(
   }
 
   const { gapCount, productCount, total } = visionModelResponse.summary
+  const missing = planogramResponse?.missingItems ?? []
+  const planogramName = planogramResponse?.planogramName
+
   if (language === 'zh') {
-    return {
-      suggestedAction:
-        gapCount > 0
-          ? `复核 ${gapCount} 个货架空位并准备补货。`
-          : total > 0
-            ? '未检测到货架空位，继续常规监控。'
-            : '未检测到商品或空位，请检查摄像头角度和图像质量。',
-      explanation:
-        `本地视觉模型检测到 ${total} 个对象：${productCount} 个商品候选和 ${gapCount} 个空位候选。` +
-        'Agent 后端不可用或未配置，因此当前使用基于视觉 JSON 的离线分析。',
+    let suggestedAction =
+      gapCount > 0
+        ? `复核 ${gapCount} 个货架空位并准备补货。`
+        : total > 0
+          ? '未检测到货架空位，继续常规监控。'
+          : '未检测到商品或空位，请检查摄像头角度和图像质量。'
+    if (missing.length === 1) {
+      suggestedAction = `补货 ${missing[0].itemName || missing[0].sku}`
+    } else if (missing.length > 1) {
+      suggestedAction = `补货 ${missing.length} 个缺货 SKU`
     }
+
+    let explanation =
+      `本地视觉模型检测到 ${total} 个对象：${productCount} 个商品候选和 ${gapCount} 个空位候选。` +
+      'Agent 后端不可用或未配置，因此当前使用基于视觉 JSON 的离线分析。'
+    if (planogramResponse) {
+      explanation += ` 已对照计划图「${planogramName}」。${planogramResponse.summary}`
+    } else {
+      explanation += ' 未选择计划图。'
+    }
+    return { suggestedAction, explanation }
   }
 
-  const suggestedAction =
+  let suggestedAction =
     gapCount > 0
       ? `Review ${gapCount} detected shelf gap${gapCount === 1 ? '' : 's'} and prepare replenishment.`
       : total > 0
         ? 'No shelf gaps detected. Continue routine monitoring.'
         : 'No products or gaps were detected. Verify camera angle and image quality.'
-
-  return {
-    suggestedAction,
-    explanation:
-      `Local vision detected ${total} object${total === 1 ? '' : 's'}: ` +
-      `${productCount} product candidate${productCount === 1 ? '' : 's'} and ` +
-      `${gapCount} gap candidate${gapCount === 1 ? '' : 's'}. ` +
-      'The agent backend is unavailable or not configured, so this offline recommendation only uses the vision-model JSON response.',
+  if (missing.length === 1) {
+    suggestedAction = `Restock ${missing[0].itemName || missing[0].sku}`
+  } else if (missing.length > 1) {
+    suggestedAction = `Restock ${missing.length} missing SKUs`
   }
+
+  let explanation =
+    `Local vision detected ${total} object${total === 1 ? '' : 's'}: ` +
+    `${productCount} product candidate${productCount === 1 ? '' : 's'} and ` +
+    `${gapCount} gap candidate${gapCount === 1 ? '' : 's'}. ` +
+    'The agent backend is unavailable or not configured, so this offline recommendation only uses the vision-model JSON response.'
+  if (planogramResponse) {
+    explanation += ` Matched against planogram '${planogramName}'. ${planogramResponse.summary}`
+  } else {
+    explanation += ' No planogram was selected.'
+  }
+
+  return { suggestedAction, explanation }
 }

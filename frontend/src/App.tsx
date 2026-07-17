@@ -4,6 +4,7 @@ import { ImageUploadPanel } from '@/components/audit/ImageUploadPanel'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { DatabasePanel } from '@/components/database/DatabasePanel'
 import { AppShell, type AppPage, type AppPageId } from '@/components/layout/AppShell'
+import { PlanogramPanel } from '@/components/planogram/PlanogramPanel'
 import { StreamPanel } from '@/components/stream/StreamPanel'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useAuditAnalysis } from '@/hooks/useAuditAnalysis'
@@ -31,6 +32,11 @@ function App() {
       id: 'audit',
       label: text.pages.audit[0],
       description: text.pages.audit[1],
+    },
+    {
+      id: 'planogram',
+      label: text.pages.planogram[0],
+      description: text.pages.planogram[1],
     },
     {
       id: 'chat',
@@ -75,6 +81,8 @@ function App() {
           onClear={audit.clearAudit}
         />
       ) : null}
+
+      {activePageId === 'planogram' ? <PlanogramPanel text={text.planogram} /> : null}
 
       {activePageId === 'chat' ? (
         <ChatPanel

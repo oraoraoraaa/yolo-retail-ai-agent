@@ -240,13 +240,17 @@ class RetailAgent:
         products = int(summary.get("productCount") or max(0, total - gaps))
 
         if not self._settings.llm_enabled:
-            return self._mock_detection_json_reply(total, gaps, products, language)
+            return self._mock_detection_json_reply(
+                total, gaps, products, language, planogram_response
+            )
 
         try:
             prompt = (
                 "A local shelf vision model produced this JSON response. "
                 "Use it to recommend the next store-staff action. "
                 "If Planogram data is null or empty, explicitly treat the planogram lookup as unavailable. "
+                "When Planogram data includes missingItems / gapMatches, name the expected SKUs and "
+                "mention stock/price when present. "
                 "Return a short suggested action (max 8 words) on the first line, "
                 "then a blank line, then a concise explanation.\n\n"
                 "Vision model JSON:\n"
@@ -264,14 +268,16 @@ class RetailAgent:
             )
             action, _, explanation = reply.partition("\n")
             action = action.strip() or self._offline_detection_action(
-                gaps, total, language
+                gaps, total, language, planogram_response
             )
             explanation = explanation.strip() or self._offline_detection_explanation(
-                total, gaps, products, language
+                total, gaps, products, language, planogram_response
             )
             return action, explanation
         except Exception:  # pragma: no cover - network dependent
-            return self._mock_detection_json_reply(total, gaps, products, language)
+            return self._mock_detection_json_reply(
+                total, gaps, products, language, planogram_response
+            )
 
     def _mock_detection_json_reply(
         self,
@@ -279,24 +285,57 @@ class RetailAgent:
         gaps: int,
         products: int,
         language: str,
+        planogram_response: dict[str, Any] | None = None,
     ) -> tuple[str, str]:
         return (
-            self._offline_detection_action(gaps, total, language),
-            self._offline_detection_explanation(total, gaps, products, language),
+            self._offline_detection_action(gaps, total, language, planogram_response),
+            self._offline_detection_explanation(
+                total, gaps, products, language, planogram_response
+            ),
         )
 
-    def _offline_detection_action(self, gaps: int, total: int, language: str) -> str:
+    def _planogram_missing_names(
+        self, planogram_response: dict[str, Any] | None
+    ) -> list[str]:
+        if not planogram_response:
+            return []
+        missing = planogram_response.get("missingItems") or planogram_response.get(
+            "missing_items"
+        ) or []
+        names: list[str] = []
+        for item in missing:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("itemName") or item.get("item_name") or item.get("sku") or "").strip()
+            if name:
+                names.append(name)
+        return names
+
+    def _offline_detection_action(
+        self,
+        gaps: int,
+        total: int,
+        language: str,
+        planogram_response: dict[str, Any] | None = None,
+    ) -> str:
         """Short offline recommended action derived from detector counts."""
+        missing = self._planogram_missing_names(planogram_response)
         if language == "zh":
             if total == 0:
                 return "检查摄像头与货架可见性"
             if gaps == 0:
                 return "无需操作"
+            if missing:
+                return f"补货 {missing[0]}" + (f" 等 {len(missing)} 项" if len(missing) > 1 else "")
             return f"补货 {gaps} 个空位"
         if total == 0:
             return "Check camera and shelf visibility"
         if gaps == 0:
             return "No action needed"
+        if missing:
+            if len(missing) == 1:
+                return f"Restock {missing[0]}"
+            return f"Restock {len(missing)} missing SKU(s)"
         return f"Restock {gaps} gap(s)"
 
     def _offline_detection_explanation(
@@ -305,7 +344,20 @@ class RetailAgent:
         gaps: int,
         products: int,
         language: str,
+        planogram_response: dict[str, Any] | None = None,
     ) -> str:
+        missing = self._planogram_missing_names(planogram_response)
+        planogram_name = ""
+        if planogram_response:
+            planogram_name = str(
+                planogram_response.get("planogramName")
+                or planogram_response.get("planogram_name")
+                or ""
+            ).strip()
+        planogram_summary = ""
+        if planogram_response:
+            planogram_summary = str(planogram_response.get("summary") or "").strip()
+
         if language == "zh":
             if total == 0:
                 return (
@@ -313,13 +365,29 @@ class RetailAgent:
                     "检查摄像头角度、光照和货架可见性。"
                 )
             if gaps == 0:
-                return (
+                base = (
                     f"本地视觉模型检测到 {products} 个商品候选，没有发现空位候选。"
-                    "计划图查询尚未实现，因此当前离线建议只基于检测器输出。"
+                )
+                if planogram_name:
+                    return base + f" 已对照计划图「{planogram_name}」，暂无缺货匹配。"
+                return base + " 未选择计划图，因此当前离线建议只基于检测器输出。"
+            if missing:
+                names = "、".join(missing)
+                detail = planogram_summary or f"空位对应计划图中的：{names}。"
+                return (
+                    f"本地视觉模型检测到 {gaps} 个空位候选和 {products} 个商品候选。"
+                    f" 对照计划图「{planogram_name or '当前计划图'}」后，{detail}"
+                    " 建议核对后补货或触发补货流程。"
+                )
+            if planogram_name:
+                return (
+                    f"本地视觉模型检测到 {gaps} 个空位候选和 {products} 个商品候选。"
+                    f" 已对照计划图「{planogram_name}」，但部分空位单元格尚未填写 SKU 信息，"
+                    "请人工核对后再补货。"
                 )
             return (
                 f"本地视觉模型检测到 {gaps} 个空位候选和 {products} 个商品候选。"
-                "计划图查询尚未实现，因此门店人员应在补货前人工核对空位位置。"
+                " 未选择计划图，因此门店人员应在补货前人工核对空位位置。"
             )
 
         if total == 0:
@@ -328,13 +396,29 @@ class RetailAgent:
                 "Verify the camera angle, lighting, and shelf visibility before relying on this audit."
             )
         if gaps == 0:
+            base = (
+                f"The local vision model detected {products} product candidate(s) and no gap candidates."
+            )
+            if planogram_name:
+                return base + f" Cross-checked planogram '{planogram_name}' with no missing SKUs."
+            return base + " No planogram was selected, so this offline recommendation uses detector output only."
+        if missing:
+            names = ", ".join(missing)
+            detail = planogram_summary or f"Gaps map to expected items: {names}."
             return (
-                f"The local vision model detected {products} product candidate(s) and no gap candidates. "
-                "Planogram lookup is not implemented yet, so this offline recommendation is based only on detector output."
+                f"The local vision model detected {gaps} gap candidate(s) and {products} product candidate(s). "
+                f"Against planogram '{planogram_name or 'active planogram'}', {detail} "
+                "Staff should verify and restock those facings."
+            )
+        if planogram_name:
+            return (
+                f"The local vision model detected {gaps} gap candidate(s) and {products} product candidate(s). "
+                f"Planogram '{planogram_name}' was applied, but some gap cells have no SKU metadata yet. "
+                "Verify those locations manually before restocking."
             )
         return (
             f"The local vision model detected {gaps} gap candidate(s) and {products} product candidate(s). "
-            "Planogram lookup is not implemented yet, so staff should verify the gap locations manually before restocking."
+            "No planogram was selected, so staff should verify the gap locations manually before restocking."
         )
 
     # -- OpenAI-compatible transport ---------------------------------------

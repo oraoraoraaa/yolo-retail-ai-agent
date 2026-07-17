@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 
-import { listStreamCameras, listStreamModels, type StreamCamera, type StreamModel } from '@/api'
+import {
+  listPlanograms,
+  listStreamCameras,
+  listStreamModels,
+  setActivePlanogram,
+  type StreamCamera,
+  type StreamModel,
+} from '@/api'
 import type { Language, UI_TEXT } from '@/lib/i18n'
 import type { AuditPanelState } from '@/types'
+import type { Planogram } from '@/types/planogram'
 
 import styles from './ImageUploadPanel.module.css'
 
@@ -40,20 +48,28 @@ export function ImageUploadPanel({
   const [localError, setLocalError] = useState<string | null>(null)
   const [cameras, setCameras] = useState<StreamCamera[]>([])
   const [models, setModels] = useState<StreamModel[]>([])
+  const [planograms, setPlanograms] = useState<Planogram[]>([])
   const [selectedCamera, setSelectedCamera] = useState('0')
   const [selectedModel, setSelectedModel] = useState('')
+  const [selectedPlanogramId, setSelectedPlanogramId] = useState('')
   const [intervalMs, setIntervalMs] = useState(60_000)
+  const [planogramLoading, setPlanogramLoading] = useState(true)
 
   const isBusy = state.status === 'analyzing' || state.status === 'uploading'
   const suggestedAction = state.result?.suggestedAction ?? ''
   const explanation = state.result?.explanation ?? ''
+  const planogramMatch = state.result?.planogramResponse ?? null
 
   useEffect(() => {
     let cancelled = false
 
     async function loadControls(): Promise<void> {
       try {
-        const [cameraResponse, modelResponse] = await Promise.all([listStreamCameras(), listStreamModels()])
+        const [cameraResponse, modelResponse, planogramResponse] = await Promise.all([
+          listStreamCameras(),
+          listStreamModels(),
+          listPlanograms(),
+        ])
         if (cancelled) {
           return
         }
@@ -62,9 +78,15 @@ export function ImageUploadPanel({
         setSelectedCamera(cameraResponse.defaultCamera || cameraResponse.cameras[0]?.id || '0')
         setModels(modelResponse.models)
         setSelectedModel(modelResponse.defaultModel || modelResponse.models[0]?.id || '')
+        setPlanograms(planogramResponse.planograms)
+        setSelectedPlanogramId(planogramResponse.activePlanogramId || planogramResponse.planograms[0]?.id || '')
       } catch (error) {
         if (!cancelled) {
           setLocalError(error instanceof Error ? error.message : text.controlsError)
+        }
+      } finally {
+        if (!cancelled) {
+          setPlanogramLoading(false)
         }
       }
     }
@@ -74,7 +96,19 @@ export function ImageUploadPanel({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [text.controlsError])
+
+  async function onPlanogramChange(planogramId: string): Promise<void> {
+    setSelectedPlanogramId(planogramId)
+    if (!planogramId) {
+      return
+    }
+    try {
+      await setActivePlanogram(planogramId)
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : text.controlsError)
+    }
+  }
 
   function handleFile(file: File | undefined): void {
     if (!file) {
@@ -150,6 +184,24 @@ export function ImageUploadPanel({
             ) : (
               <option value={selectedModel}>{selectedModel || text.defaultModel}</option>
             )}
+          </select>
+        </label>
+
+        <label className={styles.field}>
+          <span>{text.planogram}</span>
+          <select
+            className={styles.select}
+            value={selectedPlanogramId}
+            disabled={isBusy || isMonitoring || planogramLoading}
+            onChange={(event) => void onPlanogramChange(event.target.value)}
+          >
+            {planogramLoading ? <option value="">{text.planogramLoading}</option> : null}
+            {!planogramLoading && planograms.length === 0 ? <option value="">{text.planogramNone}</option> : null}
+            {planograms.map((planogram) => (
+              <option key={planogram.id} value={planogram.id}>
+                {planogram.name}
+              </option>
+            ))}
           </select>
         </label>
 
@@ -285,6 +337,31 @@ export function ImageUploadPanel({
           <p className={`${styles.boxBody} ${explanation ? '' : styles.boxEmpty}`}>
             {explanation || text.waiting}
           </p>
+        </article>
+
+        <article className={`${styles.box} ${styles.planogramBox}`} aria-live="polite">
+          <h3 className={styles.boxLabel}>{text.planogramMatch}</h3>
+          {planogramMatch ? (
+            <div className={styles.boxBody}>
+              <p>{planogramMatch.summary}</p>
+              {planogramMatch.missingItems.length > 0 ? (
+                <>
+                  <p className={styles.missingTitle}>{text.missingItems}</p>
+                  <ul className={styles.missingList}>
+                    {planogramMatch.missingItems.map((item) => (
+                      <li key={`${item.slotId}-${item.sku || item.itemName}`}>
+                        {`${item.itemName || item.sku || item.slotId}`}
+                        {item.itemStock != null ? ` · stock ${item.itemStock}` : ''}
+                        {item.itemPrice != null ? ` · $${item.itemPrice}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
+          ) : (
+            <p className={`${styles.boxBody} ${styles.boxEmpty}`}>{text.noMatchYet}</p>
+          )}
         </article>
       </div>
     </section>

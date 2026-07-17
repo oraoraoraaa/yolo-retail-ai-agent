@@ -67,9 +67,17 @@ export function useAuditAnalysis() {
 
     try {
       const result = await analyzeShelfImage(file, model, language)
+      // Prefer the detector's annotated frame (boxes drawn) over the original upload preview.
+      if (result.annotatedImage) {
+        if (previewUrlRef.current) {
+          URL.revokeObjectURL(previewUrlRef.current)
+          previewUrlRef.current = null
+        }
+      }
       setState((previous) => ({
         ...previous,
         status: 'success',
+        previewUrl: result.annotatedImage ?? previous.previewUrl,
         result,
         errorMessage: null,
       }))

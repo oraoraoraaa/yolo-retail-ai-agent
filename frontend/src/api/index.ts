@@ -3,6 +3,15 @@ export { analyzeShelfCameraCapture, analyzeShelfImage } from './audit'
 export { sendChatMessage } from './chat'
 export { queryDatabaseRecords } from './database'
 export {
+  createPlanogram,
+  deletePlanogram,
+  getActivePlanogramId,
+  listPlanograms,
+  matchPlanogramDetections,
+  setActivePlanogram,
+  updatePlanogram,
+} from './planogram'
+export {
   captureCameraDetection,
   detectUploadedImage,
   getStreamStatus,

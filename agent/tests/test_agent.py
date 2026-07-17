@@ -28,15 +28,18 @@ def _clean_singletons(monkeypatch: pytest.MonkeyPatch):
     reset_detector()
     # Reset agent + store singletons by clearing module globals.
     import app.services.agent as agent_mod
+    import app.services.planogram_store as planogram_mod
     import app.services.store as store_mod
 
     agent_mod._agent = None
     store_mod._store = None
+    planogram_mod._store = None
     yield
     reset_settings()
     reset_detector()
     agent_mod._agent = None
     store_mod._store = None
+    planogram_mod._store = None
 
 
 def test_offline_detection_action_english() -> None:
@@ -193,3 +196,105 @@ def test_record_store_query() -> None:
     assert any("gaps" in r.summary.lower() for r in hits)
     typed = store.query(record_type="audit")
     assert all(r.type == "audit" for r in typed)
+
+
+def test_planogram_seed_and_match() -> None:
+    from app.services.planogram_match import match_planogram
+    from app.services.planogram_store import PlanogramStore
+
+    store = PlanogramStore()
+    planograms = store.list()
+    assert len(planograms) >= 1
+    active = store.get(store.get_active_id() or "")
+    assert active is not None
+
+    result = match_planogram(
+        active,
+        {
+            "image": {"width": 100, "height": 100},
+            "detections": [
+                {
+                    "label": "gap",
+                    "confidence": 0.91,
+                    "normalizedBox": {"x1": 0.05, "y1": 0.05, "x2": 0.2, "y2": 0.25},
+                }
+            ],
+            "summary": {"total": 1, "gapCount": 1, "productCount": 0},
+        },
+    )
+    assert result.planogram_id == active.id
+    assert len(result.gap_matches) == 1
+    assert result.gap_matches[0]["slotId"]
+    assert result.missing_items
+    assert "Brand Y Soda" in result.missing_items[0]["itemName"]
+
+
+def test_planogram_endpoints() -> None:
+    client = TestClient(app)
+    listed = client.get("/api/v1/planograms")
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["planograms"]
+    active_id = body["activePlanogramId"]
+    assert active_id
+
+    created = client.post(
+        "/api/v1/planograms",
+        json={
+            "name": "Test Bay",
+            "description": "unit test",
+            "slots": [
+                {
+                    "id": "slot-test",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 0.4,
+                    "height": 0.4,
+                    "itemName": "Test SKU",
+                    "itemPrice": 1.5,
+                    "itemStock": 5,
+                    "sku": "T-1",
+                    "notes": "",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    plan_id = created.json()["id"]
+    assert created.json()["slots"][0]["id"] == "slot-test"
+
+    activated = client.put("/api/v1/planograms/active", json={"planogramId": plan_id})
+    assert activated.status_code == 200
+    assert activated.json()["activePlanogramId"] == plan_id
+
+    matched = client.post(
+        f"/api/v1/planograms/{plan_id}/match",
+        json={
+            "visionModelResponse": {
+                "detections": [
+                    {
+                        "label": "gap",
+                        "confidence": 0.8,
+                        "normalizedBox": {"x1": 0.0, "y1": 0.0, "x2": 0.3, "y2": 0.3},
+                    }
+                ]
+            }
+        },
+    )
+    assert matched.status_code == 200
+    match_body = matched.json()
+    assert match_body["missingItems"]
+    assert match_body["missingItems"][0]["itemName"] == "Test SKU"
+    assert match_body["missingItems"][0]["slotId"] == "slot-test"
+
+    offline = RetailAgent(Settings(openai_api_key=""))
+    action, explanation = offline.summarize_detection_json(
+        {
+            "summary": {"total": 1, "gapCount": 1, "productCount": 0},
+            "detections": [{"label": "gap"}],
+        },
+        planogram_response=match_body,
+        language="en",
+    )
+    assert "Test SKU" in action or "Restock" in action
+    assert "Test Bay" in explanation or "Test SKU" in explanation

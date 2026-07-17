@@ -10,13 +10,6 @@ type FilterValue = DatabaseRecordType | 'all'
 
 const FILTER_VALUES: FilterValue[] = ['all', 'audit', 'sku', 'inventory', 'chat']
 
-const TYPE_LABELS: Record<DatabaseRecordType, string> = {
-  audit: 'Audit',
-  sku: 'SKU',
-  inventory: 'Inventory',
-  chat: 'Chat',
-}
-
 function formatDate(value: string): string {
   if (!value) {
     return '-'
