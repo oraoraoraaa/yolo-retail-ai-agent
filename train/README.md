@@ -174,6 +174,27 @@ Useful imbalance flags (defaults favor gap recall):
 | `--copy-paste P` | 0.1 (when balanced) | Ultralytics copy-paste probability |
 | `--cls G` | 1.0 (when balanced) | Classification loss gain |
 
+### Existing Training Result
+
+Including:
+
+* merged-gap-product (2026-07-17-19-36-29)
+
+Download in this [google drive link](https://drive.google.com/drive/folders/1NinwJx2xQjcPQDQDU0JUSAqkdoUjwMCQ?usp=sharing).
+
+Place results as:
+
+```text
+train/
+├── artifacts/ (git ignored)
+│   └── <dataset-name>/
+│       └── train/
+│           └── weights/
+│               ├── best.pt
+│               └── last.pt
+...             ...
+```
+
 ## Validate
 
 ```bash
@@ -238,16 +259,14 @@ uv run python export.py \
   --format onnx
 ```
 
-## Exported Weight Files
+## Existing Weight Files
+
+Download the weight files using this [google drive link](https://drive.google.com/drive/folders/19nNcMQ2F7o4-Pcep1BDyll8wA9iFADFc?usp=sharing).
+
+Place them as:
 
 ```text
 train/
-├── artifacts/ (git ignored)
-│   └── <dataset-name>/
-│       └── train/
-│           └── weights/
-│               ├── best.pt
-│               └── last.pt
 └── export/
     ├── gap-product-chinese-yolo11n.onnx
     └── merged-gap-product.onnx

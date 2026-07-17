@@ -47,6 +47,17 @@ Frontend remains **npm** (`frontend/`).
 
 ### 1. Local vision service
 
+Download the weight files using this [google drive link](https://drive.google.com/drive/folders/19nNcMQ2F7o4-Pcep1BDyll8wA9iFADFc?usp=sharing), and place them as:
+
+```text
+train/
+└── export/
+    ├── gap-product-chinese-yolo11n.onnx (default model, already present within repository)
+    └── merged-gap-product.onnx
+```
+
+after the weight files are in place, run the following command:
+
 ```bash
 cd model-local
 uv sync

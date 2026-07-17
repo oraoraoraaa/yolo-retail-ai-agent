@@ -25,6 +25,7 @@ train/yolo26n.pt
 train/yolov8m.pt
 train/yolo11n.pt
 train/runs
+train/export/merged-gap-product.onnx
 
 # python
 .venv
