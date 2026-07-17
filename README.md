@@ -6,43 +6,6 @@ An AI Agent-driven inventory audit system combining YOLO object detection with L
 
 See [instruction](doc/instruction.md).
 
-## Develop
-
-> Contents below are for developers only. Read them carefully before you do the actual work and make a git push.
->
-> ![miku_for_developers](./doc/images/banner/miku_for_developers.png)
-
-- [DEVELOPING RULES](./doc/developing_rules.md)
-
-## Architecture
-
-All vision inference uses **local weight files** via `model-local/`:
-
-```text
-frontend (:5173)
-  ├─ stream / detect ──► model-local (:8001) ──► train/export/*.onnx
-  └─ chat / DB / auth ──► backend (:8000)
-                              ├─ SQLite (default) or Postgres
-                              ├─ audit media under backend/data/media/
-                              ├─ JWT auth when AUTH_ENABLED=true
-                              └─ LLM retail agent (services/agent.py)
-```
-
-Default weights: `train/export/gap-product-chinese-yolo11n.onnx`
-
-## Dependency management
-
-All **Python** packages in this repo are managed with **[uv](https://docs.astral.sh/uv/)**:
-
-| Package | Path | Command |
-| --- | --- | --- |
-| Backend API | `backend/` | `uv sync && uv run …` |
-| Local vision | `model-local/` | `uv sync && uv run …` |
-| Training | `train/` | `uv sync && uv run …` |
-| Dataset download | `dataset/` | `uv sync && uv run …` |
-
-Frontend remains **npm** (`frontend/`).
-
 ## Quick start
 
 ### 1. Local vision service
@@ -94,6 +57,43 @@ shows a login screen (default bootstrap user `admin` / `admin`).
 ## Frontend
 
 See [frontend/README.md](frontend/README.md).
+
+## Develop
+
+> Contents below are for developers only. Read them carefully before you do the actual work and make a git push.
+>
+> ![miku_for_developers](./doc/images/banner/miku_for_developers.png)
+
+- [DEVELOPING RULES](./doc/developing_rules.md)
+
+## Architecture
+
+All vision inference uses **local weight files** via `model-local/`:
+
+```text
+frontend (:5173)
+  ├─ stream / detect ──► model-local (:8001) ──► train/export/*.onnx
+  └─ chat / DB / auth ──► backend (:8000)
+                              ├─ SQLite (default) or Postgres
+                              ├─ audit media under backend/data/media/
+                              ├─ JWT auth when AUTH_ENABLED=true
+                              └─ LLM retail agent (services/agent.py)
+```
+
+Default weights: `train/export/gap-product-chinese-yolo11n.onnx`
+
+## Dependency management
+
+All **Python** packages in this repo are managed with **[uv](https://docs.astral.sh/uv/)**:
+
+| Package | Path | Command |
+| --- | --- | --- |
+| Backend API | `backend/` | `uv sync && uv run …` |
+| Local vision | `model-local/` | `uv sync && uv run …` |
+| Training | `train/` | `uv sync && uv run …` |
+| Dataset download | `dataset/` | `uv sync && uv run …` |
+
+Frontend remains **npm** (`frontend/`).
 
 ## Training & datasets
 
