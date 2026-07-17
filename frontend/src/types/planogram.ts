@@ -12,7 +12,7 @@ export interface PlanogramSlot {
   notes: string
 }
 
-/** Full planogram record (agent in-memory store). */
+/** Full planogram record (SQL-backed agent store). */
 export interface Planogram {
   id: string
   name: string
@@ -20,6 +20,8 @@ export interface Planogram {
   imageBase64: string
   imageWidth: number
   imageHeight: number
+  imageRef?: string | null
+  imageUrl?: string | null
   slots: PlanogramSlot[]
   createdAt: string
   updatedAt: string

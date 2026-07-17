@@ -1,4 +1,4 @@
-import type { DatabaseQueryParams, DatabaseQueryResult } from '@/types'
+import type { DatabaseQueryParams, DatabaseQueryResult, DatabaseRecord } from '@/types'
 
 import { apiFetch, getApiBaseUrl } from './client'
 
@@ -7,12 +7,10 @@ const DATABASE_QUERY_PATH = '/api/v1/database/records'
 /**
  * Query saved retail records.
  *
- * Backend contract (planned):
+ * Backend contract:
  * - Method: GET
  * - Query: keyword?: string, type?: audit | sku | inventory | chat
  * - Response JSON: { records: DatabaseRecord[] }
- *
- * Until the backend exists this returns an empty result set.
  */
 export async function queryDatabaseRecords(params: DatabaseQueryParams = {}): Promise<DatabaseQueryResult> {
   if (!getApiBaseUrl()) {
@@ -31,4 +29,9 @@ export async function queryDatabaseRecords(params: DatabaseQueryParams = {}): Pr
   const response = await apiFetch(`${DATABASE_QUERY_PATH}${query ? `?${query}` : ''}`)
 
   return (await response.json()) as DatabaseQueryResult
+}
+
+export async function getDatabaseRecord(recordId: string): Promise<DatabaseRecord> {
+  const response = await apiFetch(`${DATABASE_QUERY_PATH}/${encodeURIComponent(recordId)}`)
+  return (await response.json()) as DatabaseRecord
 }

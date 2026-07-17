@@ -53,8 +53,9 @@ frontend/yarn-error.log*
 frontend/pnpm-debug.log*
 frontend/lerna-debug.log*
 
-# agent secrets / logs
-agent/.env
-agent/.env.*.local
-agent/logs
-agent/*.log
+# backend secrets / logs / local DB + media
+backend/.env
+backend/.env.*.local
+backend/logs
+backend/*.log
+backend/data/

@@ -1,0 +1,49 @@
+import type { AuthMe, AuthStatus, LoginResult } from '@/types/auth'
+
+import { apiFetch, getApiBaseUrl, setAuthSession } from './client'
+
+const AUTH_STATUS_PATH = '/api/v1/auth/status'
+const AUTH_LOGIN_PATH = '/api/v1/auth/login'
+const AUTH_ME_PATH = '/api/v1/auth/me'
+
+export async function fetchAuthStatus(): Promise<AuthStatus> {
+  if (!getApiBaseUrl()) {
+    return {
+      authEnabled: false,
+      authenticated: true,
+      username: 'offline',
+      role: 'admin',
+    }
+  }
+
+  const response = await apiFetch(AUTH_STATUS_PATH)
+  return (await response.json()) as AuthStatus
+}
+
+export async function login(username: string, password: string): Promise<LoginResult> {
+  if (!getApiBaseUrl()) {
+    const result: LoginResult = {
+      accessToken: 'offline',
+      tokenType: 'bearer',
+      username,
+      role: 'admin',
+      expiresInHours: 12,
+    }
+    setAuthSession(result.accessToken, result.username, result.role)
+    return result
+  }
+
+  const response = await apiFetch(AUTH_LOGIN_PATH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  const result = (await response.json()) as LoginResult
+  setAuthSession(result.accessToken, result.username, result.role)
+  return result
+}
+
+export async function fetchAuthMe(): Promise<AuthMe> {
+  const response = await apiFetch(AUTH_ME_PATH)
+  return (await response.json()) as AuthMe
+}

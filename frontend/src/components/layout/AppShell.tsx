@@ -22,6 +22,9 @@ interface AppShellProps {
   navigationLabel: string
   tagline: string
   onLanguageChange: (language: Language) => void
+  userLabel?: string | null
+  logoutLabel?: string
+  onLogout?: () => void
 }
 
 export function AppShell({
@@ -34,6 +37,9 @@ export function AppShell({
   navigationLabel,
   tagline,
   onLanguageChange,
+  userLabel,
+  logoutLabel,
+  onLogout,
 }: AppShellProps) {
   return (
     <div className={styles.shell}>
@@ -74,6 +80,16 @@ export function AppShell({
             )
           })}
         </nav>
+        {userLabel || onLogout ? (
+          <div className={styles.userBlock}>
+            {userLabel ? <p className={styles.userLabel}>{userLabel}</p> : null}
+            {onLogout && logoutLabel ? (
+              <button className={styles.logoutButton} type="button" onClick={onLogout}>
+                {logoutLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </header>
       <main className={styles.main}>{children}</main>
     </div>

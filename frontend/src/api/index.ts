@@ -1,7 +1,8 @@
-export { ApiError, apiFetch, getApiBaseUrl } from './client'
+export { ApiError, apiFetch, absoluteApiUrl, clearAuthSession, getApiBaseUrl, getAuthToken } from './client'
+export { fetchAuthMe, fetchAuthStatus, login } from './auth'
 export { analyzeShelfCameraCapture, analyzeShelfImage } from './audit'
 export { sendChatMessage } from './chat'
-export { queryDatabaseRecords } from './database'
+export { getDatabaseRecord, queryDatabaseRecords } from './database'
 export {
   createPlanogram,
   deletePlanogram,

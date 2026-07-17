@@ -30,7 +30,7 @@ See `doc/instruction.md` for the product rationale.
 ├── README.md                 # human quick start
 ├── doc/                      # product + contributor docs
 ├── frontend/                 # React + Vite + TypeScript UI (:5173)
-├── agent/                    # FastAPI retail agent API (:8000)
+├── backend/                  # FastAPI application API (:8000)
 ├── model-local/              # local YOLO/ONNX vision service (:8001)
 ├── train/                    # train / validate / predict / export
 ├── dataset/                  # Roboflow download helpers only
@@ -53,15 +53,15 @@ Browser UI  (:5173)
   │                                    train/export/*.onnx
   │                                    (local weights only)
   │
-  └─ Chat / database / audit narrative ──► agent (:8000)
+  └─ Chat / database / audit narrative ──► backend (:8000)
                                               │
                                               └─ image audits ──► model-local (:8001)
 ```
 
 | Port | Process | Role |
 | --- | --- | --- |
-| 5173 | `frontend` (Vite) | Workspace UI |
-| 8000 | `agent` (FastAPI) | LLM chat, audit narratives, planograms, in-memory records |
+| 5173 | `frontend` (Vite) | Workspace UI (JWT login when auth enabled) |
+| 8000 | `backend` (FastAPI) | App API: auth, SQL, planograms, media, LLM retail agent |
 | 8001 | `model-local` (`stream_server.py`) | **Only** vision inference path |
 
 **Default weights:** `train/export/gap-product-chinese-yolo11n.onnx`
@@ -69,7 +69,7 @@ Browser UI  (:5173)
 ### Hard rules for agents
 
 1. **All vision inference uses local weight files via `model-local/`.**  
-   Do not load Ultralytics inside `agent/`. Do not reintroduce cloud/runtime Roboflow inference into the app path.
+   Do not load Ultralytics inside `backend/`. Do not reintroduce cloud/runtime Roboflow inference into the app path.
 2. **Roboflow is for dataset download only** (`dataset/`), not live detection.
 3. **Python deps: uv only.** Never add `requirements.txt` or document `pip install` for packages in this repo.
 4. **Frontend deps: npm.** Do not mix package managers inside a package.
@@ -87,49 +87,57 @@ Browser UI  (:5173)
 - Pages: Camera Stream, Shelf Audit, Planogram, Agent Chat, Database.
 - API modules under `src/api/`; hooks under `src/hooks/`; types under `src/types/`.
 - Env:
-  - `VITE_API_BASE_URL` → agent (`http://localhost:8000`); empty ⇒ chat/DB/planogram local stubs.
+  - `VITE_API_BASE_URL` → backend (`http://localhost:8000`); empty ⇒ chat/DB/planogram local stubs.
   - `VITE_STREAM_BASE_URL` → model-local (`http://localhost:8001`).
 - Planogram flow: upload a shelf photo, **draw facing rectangles by hand** on
   the image, fill item name / price / stock / SKU per region, then mark one
   planogram active.
 - Shelf audit flow: **detect via model-local**, match detections to the **active
   planogram** (`POST /api/v1/planograms/{id}/match`), then send both JSON blobs
-  to agent `POST /api/v1/audit/analyze-detections`.
+  to backend `POST /api/v1/audit/analyze-detections`.
 - Commands: `npm install` / `npm run dev` / `npm run build` / `npm run lint`.
 
-### `agent/` — FastAPI backend
+### `backend/` — FastAPI application API
 
 ```text
-agent/app/
-  main.py          # app, CORS, /health
-  config.py        # env settings (LOCAL_VISION_*, OPENAI_*)
-  routers/         # audit, chat, database, planogram
+backend/app/
+  main.py          # app, CORS, lifespan init_db, /health
+  config.py        # env settings (LOCAL_VISION_*, OPENAI_*, DATABASE_*, AUTH_*)
+  db/              # SQLAlchemy models + session (SQLite default / Postgres via URL)
+  routers/         # auth, audit, chat, database, planogram, media
   schemas/         # camelCase Pydantic models
   services/
     detector.py         # HTTP client → model-local (no YOLO load)
-    agent.py            # LLM + offline narratives
-    store.py            # in-memory activity records
-    planogram_store.py  # in-memory planograms + active selection
+    agent.py            # LLM retail agent + offline narratives
+    store.py            # SQL record store (audits + image refs + detection JSON)
+    planogram_store.py  # SQL planograms + active selection
     planogram_match.py  # map detection centers → grid slots
+    auth.py             # JWT + bcrypt staff auth
+    media.py            # on-disk image refs under backend/data/media
 ```
 
 Important endpoints:
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| POST | `/api/v1/audit/analyze` | multipart image → model-local → narrative |
-| POST | `/api/v1/audit/analyze-detections` | vision JSON + optional planogram match → narrative |
-| GET/POST | `/api/v1/planograms` | list / create planograms (in-memory) |
+| POST | `/api/v1/auth/login` | username/password → JWT |
+| GET | `/api/v1/auth/status` | `{ authEnabled, authenticated, ... }` |
+| GET | `/api/v1/auth/me` | current user (auth when enabled) |
+| POST | `/api/v1/audit/analyze` | multipart image → model-local → narrative + persisted audit |
+| POST | `/api/v1/audit/analyze-detections` | vision JSON + optional imageBase64 → narrative + persisted audit |
+| GET/POST | `/api/v1/planograms` | list / create planograms (SQL) |
 | PUT | `/api/v1/planograms/active` | choose planogram used by audits |
 | POST | `/api/v1/planograms/{id}/match` | match vision detections to grid slots |
 | POST | `/api/v1/agent/chat` | JSON or multipart |
-| GET | `/api/v1/database/records` | in-memory store |
-| GET | `/health` | reports `visionBackend: model-local` |
+| GET | `/api/v1/database/records` | SQL store (optional keyword/type) |
+| GET | `/api/v1/database/records/{id}` | single record with detection JSON / image refs |
+| GET | `/api/v1/media/{path}` | serve stored audit/planogram images |
+| GET | `/health` | reports `visionBackend: model-local`, `authEnabled`, DB scheme |
 
 Commands:
 
 ```bash
-cd agent
+cd backend
 uv sync
 uv run uvicorn app.main:app --reload --port 8000
 uv run pytest
@@ -189,8 +197,8 @@ Three processes, three terminals:
 # 1 vision
 cd model-local && uv sync && uv run stream_server.py
 
-# 2 agent
-cd agent && uv sync && cp -n .env.example .env && uv run uvicorn app.main:app --reload --port 8000
+# 2 backend
+cd backend && uv sync && cp -n .env.example .env && uv run uvicorn app.main:app --reload --port 8000
 
 # 3 UI
 cd frontend && cp -n .env.example .env && npm install && npm run dev
@@ -204,13 +212,13 @@ Open `http://localhost:5173`.
 
 | Area | Command |
 | --- | --- |
-| Agent | `cd agent && uv run pytest` |
+| Backend | `cd backend && uv run pytest` |
 | Model-local | `cd model-local && uv run pytest` |
 | Frontend | `cd frontend && npm run build` (typecheck + build); `npm run lint` |
 
-When changing agent offline paths, detector client, or camera helpers, **run the matching pytest suite** before finishing.
+When changing retail-agent offline paths, detector client, or camera helpers, **run the matching pytest suite** before finishing.
 
-Agent includes `httpx` (runtime) and `httpx2` (silences Starlette TestClient deprecation). Keep both unless FastAPI/Starlette no longer requires it.
+Backend includes `httpx` (runtime) and `httpx2` (silences Starlette TestClient deprecation). Keep both unless FastAPI/Starlette no longer requires it.
 
 ---
 
@@ -235,15 +243,17 @@ Follow Conventional Commits (see human rules doc). Examples relevant here:
 ### Config / secrets
 
 - Copy from `.env.example` only; never commit real keys.
-- Agent: `OPENAI_*`, `LOCAL_VISION_*`, `APP_CORS_ORIGINS`.
+- Backend: `OPENAI_*`, `LOCAL_VISION_*`, `APP_CORS_ORIGINS`, `DATABASE_URL`, `AUTH_*`.
 - Frontend: `VITE_API_BASE_URL`, `VITE_STREAM_BASE_URL`.
+- Default DB is SQLite at `backend/data/retail.db`; set `DATABASE_URL=postgresql://...` for Postgres.
+- Set `AUTH_ENABLED=true` + a strong `AUTH_SECRET` for store deployment; bootstrap admin from `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`.
 
 ### What not to do
 
-- Do not put YOLO inference back into `agent/services/detector.py`.
-- Do not revive `model-roboflow` (or similar) as a runtime dependency of UI/agent.
+- Do not put YOLO inference back into `backend/app/services/detector.py`.
+- Do not revive `model-roboflow` (or similar) as a runtime dependency of UI/backend.
 - Do not treat `model/` as the active training/runtime path (use `train/` + `model-local/`).
-- Do not commit `dataset/*` downloads, `train/artifacts/`, or `.venv/`.
+- Do not commit `dataset/*` downloads, `train/artifacts/`, `backend/data/`, or `.venv/`.
 - Do not ignore `uv.lock` in git (locks are tracked per package).
 
 ---
@@ -252,12 +262,14 @@ Follow Conventional Commits (see human rules doc). Examples relevant here:
 
 These are real; fix only when the task asks for them:
 
-- **Planogram store** is in-memory only on the agent (and localStorage fallback in the UI when the agent is offline). It resets on process restart / browser clear; swap for a real DB later.
-- **Record store** is in-memory only (resets on process restart).
 - **Planogram↔detection matching** maps each detection center into the smallest
   user-drawn planogram rectangle that contains it (not auto rows×cols grids).
-- **Chat attachments** currently pass filenames to the LLM path more than true multimodal image content.
 - Multi-process local stack (no docker-compose yet).
+- Auth is a single bootstrap admin (no multi-user admin UI yet).
+- `model-local/stream_server.py` is a raw `ThreadingHTTPServer` (fine for demos;
+  FastAPI would share auth/CORS/OpenAPI with the backend but is not required yet).
+- Frontend API types are hand-mirrored from Pydantic schemas (no OpenAPI → TS
+  codegen). Keep both sides in sync when changing request/response shapes.
 
 ---
 
@@ -267,7 +279,7 @@ These are real; fix only when the task asks for them:
 | --- | --- |
 | Product goals / gap strategy | `doc/instruction.md` |
 | Human git/PR rules | `doc/developing_rules.md` |
-| Agent API details | `agent/README.md` |
+| Backend API details | `backend/README.md` |
 | Vision service | `model-local/README.md` |
 | Training | `train/README.md` |
 | UI | `frontend/README.md` |

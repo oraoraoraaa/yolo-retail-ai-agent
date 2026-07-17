@@ -7,6 +7,8 @@ export interface AuditAnalysisResult {
   suggestedAction: string
   /** Longer reasoning that explains why the action was suggested. */
   explanation: string
+  /** Persisted audit record id when the backend saved the run. */
+  recordId?: string
   /** JPEG data URL with model bounding boxes drawn on the shelf image. */
   annotatedImage?: string
   /** Structured local vision-model response sent to the agent layer. */

@@ -20,13 +20,15 @@ export interface SendChatResponse {
 /**
  * Send a user message to the retail agent.
  *
- * Backend contract (planned):
+ * Backend contract:
  * - Method: POST application/json, or multipart/form-data when images are attached
- * - JSON body: { message: string, history: ChatMessage[] }
- * - Multipart fields: message, history, images[]
+ * - JSON body: { message: string, history: ChatMessage[], language: string }
+ * - Multipart fields: message, history, language, images[]
  * - Response JSON: { reply: string }
  *
- * Until the backend exists this returns an empty reply.
+ * When VITE_API_BASE_URL is empty this returns a Markdown stub so the UI
+ * remains usable offline. Multipart image attachments are forwarded as real
+ * multimodal content by the backend.
  */
 /** Demo Markdown used when the backend is not configured, so the UI can be verified. */
 const STUB_REPLIES: Record<Language, string> = {

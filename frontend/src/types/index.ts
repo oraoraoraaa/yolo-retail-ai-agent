@@ -1,4 +1,5 @@
 export type { AuditAnalysisResult, AuditPanelState, AuditRequestStatus } from './audit'
+export type { AuthMe, AuthStatus, LoginResult } from './auth'
 export type {
   ChatAttachment,
   ChatMessage,

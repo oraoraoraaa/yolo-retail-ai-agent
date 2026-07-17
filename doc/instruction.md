@@ -143,5 +143,5 @@ uv sync
 uv run stream_server.py   # http://127.0.0.1:8001
 ```
 
-The agent backend (`agent/`) never loads the detector itself; it forwards
+The backend (`backend/`) never loads the detector itself; it forwards
 images to model-local. Roboflow cloud inference is not part of the app path.

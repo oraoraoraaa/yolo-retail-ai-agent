@@ -12,6 +12,9 @@ const INITIAL_STATE: AuditPanelState = {
   errorMessage: null,
 }
 
+/** Cap how far the monitor interval stretches after consecutive failures. */
+const MAX_BACKOFF_MULTIPLIER = 8
+
 export function useAuditAnalysis() {
   const [state, setState] = useState<AuditPanelState>(INITIAL_STATE)
   const [isMonitoring, setIsMonitoring] = useState(false)
@@ -19,6 +22,13 @@ export function useAuditAnalysis() {
   const fileRef = useRef<File | null>(null)
   const monitorTimerRef = useRef<number | null>(null)
   const monitorRunningRef = useRef(false)
+  const monitorParamsRef = useRef<{
+    camera: string
+    model: string
+    language: Language
+    baseIntervalMs: number
+  } | null>(null)
+  const failureStreakRef = useRef(0)
 
   useEffect(() => {
     return () => {
@@ -116,7 +126,9 @@ export function useAuditAnalysis() {
         result,
         errorMessage: null,
       }))
+      failureStreakRef.current = 0
     } catch (error) {
+      failureStreakRef.current += 1
       const message = language === 'zh' ? '摄像头抓拍分析失败。' : 'Camera capture analysis failed.'
       setState((previous) => ({
         ...previous,
@@ -129,20 +141,71 @@ export function useAuditAnalysis() {
     }
   }
 
+  function clearMonitorTimer(): void {
+    if (monitorTimerRef.current !== null) {
+      window.clearTimeout(monitorTimerRef.current)
+      monitorTimerRef.current = null
+    }
+  }
+
+  function scheduleNextMonitorTick(): void {
+    const params = monitorParamsRef.current
+    if (!params) {
+      return
+    }
+
+    const multiplier = Math.min(
+      MAX_BACKOFF_MULTIPLIER,
+      2 ** Math.max(0, failureStreakRef.current),
+    )
+    const delay = Math.max(1_000, params.baseIntervalMs * multiplier)
+
+    clearMonitorTimer()
+    monitorTimerRef.current = window.setTimeout(() => {
+      void runMonitorTick()
+    }, delay)
+  }
+
+  async function runMonitorTick(): Promise<void> {
+    const params = monitorParamsRef.current
+    if (!params) {
+      return
+    }
+
+    // Skip scheduling another tick if a previous capture is still in flight;
+    // the finally path of submitCameraCapture + scheduleNextMonitorTick keeps
+    // the loop alive without stacking overlapping work.
+    if (monitorRunningRef.current) {
+      scheduleNextMonitorTick()
+      return
+    }
+
+    await submitCameraCapture(params.camera, params.model, params.language)
+
+    // Only reschedule when monitoring is still active (stop may have been
+    // called during the await).
+    if (monitorParamsRef.current) {
+      scheduleNextMonitorTick()
+    }
+  }
+
   function startMonitoring(camera: string, model: string, intervalMs: number, language: Language): void {
     stopMonitoring()
+    monitorParamsRef.current = {
+      camera,
+      model,
+      language,
+      baseIntervalMs: Math.max(1_000, intervalMs),
+    }
+    failureStreakRef.current = 0
     setIsMonitoring(true)
-    void submitCameraCapture(camera, model, language)
-    monitorTimerRef.current = window.setInterval(() => {
-      void submitCameraCapture(camera, model, language)
-    }, intervalMs)
+    void runMonitorTick()
   }
 
   function stopMonitoring(): void {
-    if (monitorTimerRef.current !== null) {
-      window.clearInterval(monitorTimerRef.current)
-      monitorTimerRef.current = null
-    }
+    clearMonitorTimer()
+    monitorParamsRef.current = null
+    failureStreakRef.current = 0
     setIsMonitoring(false)
   }
 

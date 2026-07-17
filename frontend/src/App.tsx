@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { LoginPanel } from '@/components/auth/LoginPanel'
 import { ImageUploadPanel } from '@/components/audit/ImageUploadPanel'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { DatabasePanel } from '@/components/database/DatabasePanel'
@@ -8,6 +9,7 @@ import { PlanogramPanel } from '@/components/planogram/PlanogramPanel'
 import { StreamPanel } from '@/components/stream/StreamPanel'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useAuditAnalysis } from '@/hooks/useAuditAnalysis'
+import { useAuth } from '@/hooks/useAuth'
 import { UI_TEXT, type Language } from '@/lib/i18n'
 
 function getInitialLanguage(): Language {
@@ -18,6 +20,7 @@ function getInitialLanguage(): Language {
 function App() {
   const [activePageId, setActivePageId] = useState<AppPageId>('stream')
   const [language, setLanguage] = useState<Language>(getInitialLanguage)
+  const auth = useAuth()
   const audit = useAuditAnalysis()
   const chat = useAgentChat()
   const text = UI_TEXT[language]
@@ -55,6 +58,27 @@ function App() {
     window.localStorage.setItem('yolo-retail-language', nextLanguage)
   }
 
+  if (auth.status === 'loading') {
+    return (
+      <div className="app-loading" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+        <p style={{ color: 'var(--color-ink-muted)' }}>{text.auth.checking}</p>
+      </div>
+    )
+  }
+
+  if (auth.authEnabled && !auth.authenticated) {
+    return (
+      <LoginPanel
+        text={text.auth}
+        language={language}
+        languageLabel={text.language}
+        onLanguageChange={updateLanguage}
+        errorMessage={auth.errorMessage}
+        onSubmit={auth.login}
+      />
+    )
+  }
+
   return (
     <AppShell
       pages={pages}
@@ -65,6 +89,9 @@ function App() {
       navigationLabel={text.shell.navLabel}
       tagline={text.brandTagline}
       onLanguageChange={updateLanguage}
+      userLabel={auth.username ? `${text.auth.signedInAs} ${auth.username}` : null}
+      logoutLabel={auth.authEnabled ? text.auth.signOut : undefined}
+      onLogout={auth.authEnabled ? auth.logout : undefined}
     >
       {activePageId === 'stream' ? <StreamPanel text={text.stream} /> : null}
 

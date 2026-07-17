@@ -6,6 +6,11 @@ export interface DatabaseRecord {
   title: string
   summary: string
   updatedAt: string
+  imageRef?: string | null
+  imageUrl?: string | null
+  detectionJson?: Record<string, unknown> | null
+  planogramJson?: Record<string, unknown> | null
+  extraJson?: Record<string, unknown> | null
 }
 
 export interface DatabaseQueryParams {

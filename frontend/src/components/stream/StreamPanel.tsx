@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { getStreamVideoUrl, listStreamCameras, startStream, stopStream, type StreamCamera } from '@/api'
+import {
+  getStreamStatus,
+  getStreamVideoUrl,
+  listStreamCameras,
+  startStream,
+  stopStream,
+  type StreamCamera,
+} from '@/api'
 import type { Language, UI_TEXT } from '@/lib/i18n'
 
 import styles from './StreamPanel.module.css'
@@ -11,12 +18,22 @@ interface StreamPanelProps {
   text: (typeof UI_TEXT)[Language]['stream']
 }
 
+const STATUS_POLL_MS = 1_500
+const STATUS_POLL_MAX_MS = 15_000
+
 export function StreamPanel({ text }: StreamPanelProps) {
   const [cameras, setCameras] = useState<StreamCamera[]>([])
   const [selectedCamera, setSelectedCamera] = useState('')
   const [status, setStatus] = useState<StreamUiStatus>('idle')
   const [errorMessage, setErrorMessage] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+  const pollTimerRef = useRef<number | null>(null)
+  const pollStartedAtRef = useRef<number | null>(null)
+  const statusRef = useRef<StreamUiStatus>('idle')
+
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   const cacheBustedUrl = useMemo(() => {
     if (status === 'idle' || status === 'loading-cameras' || status === 'error') {
@@ -25,6 +42,67 @@ export function StreamPanel({ text }: StreamPanelProps) {
 
     return `${getStreamVideoUrl()}?t=${reloadKey}`
   }, [reloadKey, status])
+
+  function clearStatusPoll(): void {
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+    pollStartedAtRef.current = null
+  }
+
+  function startStatusPoll(): void {
+    clearStatusPoll()
+    pollStartedAtRef.current = Date.now()
+
+    const tick = async (): Promise<void> => {
+      // Only poll while we are waiting for the server to go live.
+      if (statusRef.current !== 'starting') {
+        clearStatusPoll()
+        return
+      }
+
+      try {
+        const response = await getStreamStatus()
+        if (response.status === 'error') {
+          setStatus('error')
+          setErrorMessage(response.error ?? text.errors.startCamera)
+          clearStatusPoll()
+          return
+        }
+        if (response.status === 'live' && response.hasFrame) {
+          // Image onLoad still confirms the MJPEG pipe; this surfaces server
+          // readiness even if the first frame is slow.
+          setStatus((current) => (current === 'starting' ? 'live' : current))
+          clearStatusPoll()
+          return
+        }
+        if (response.status === 'idle') {
+          setStatus('error')
+          setErrorMessage(text.errors.startCamera)
+          clearStatusPoll()
+          return
+        }
+      } catch {
+        // Keep trying until the timeout — transient network blips are common
+        // while the camera worker is starting.
+      }
+
+      const startedAt = pollStartedAtRef.current
+      if (startedAt !== null && Date.now() - startedAt > STATUS_POLL_MAX_MS) {
+        setStatus('error')
+        setErrorMessage(text.errors.start)
+        clearStatusPoll()
+        return
+      }
+
+      pollTimerRef.current = window.setTimeout(() => {
+        void tick()
+      }, STATUS_POLL_MS)
+    }
+
+    void tick()
+  }
 
   async function loadCameras(): Promise<string> {
     setStatus((currentStatus) => (currentStatus === 'live' ? currentStatus : 'loading-cameras'))
@@ -65,6 +143,7 @@ export function StreamPanel({ text }: StreamPanelProps) {
 
     return () => {
       cancelled = true
+      clearStatusPoll()
     }
   }, [])
 
@@ -81,6 +160,7 @@ export function StreamPanel({ text }: StreamPanelProps) {
       }
 
       setReloadKey((value) => value + 1)
+      startStatusPoll()
     } catch (error) {
       setStatus('error')
       setErrorMessage(text.errors.start)
@@ -88,6 +168,7 @@ export function StreamPanel({ text }: StreamPanelProps) {
   }
 
   async function disconnect(): Promise<void> {
+    clearStatusPoll()
     try {
       await stopStream()
     } catch {
@@ -167,8 +248,18 @@ export function StreamPanel({ text }: StreamPanelProps) {
             className={styles.streamImage}
             src={cacheBustedUrl}
             alt={text.title}
-            onLoad={() => setStatus('live')}
-            onError={() => setStatus('error')}
+            onLoad={() => {
+              clearStatusPoll()
+              setStatus('live')
+            }}
+            onError={() => {
+              // Prefer server-side error detail from the status poll when available.
+              if (statusRef.current === 'starting') {
+                return
+              }
+              setStatus('error')
+              setErrorMessage(text.errors.start)
+            }}
           />
         ) : (
           <div className={styles.placeholder}>
@@ -182,6 +273,12 @@ export function StreamPanel({ text }: StreamPanelProps) {
           <div className={styles.overlay} role="status" aria-live="polite">
             <div className={styles.spinner} />
             <span>{status === 'loading-cameras' ? text.scanning : text.opening}</span>
+          </div>
+        ) : null}
+
+        {status === 'error' && errorMessage && cacheBustedUrl ? (
+          <div className={styles.overlay} role="alert">
+            <p className={styles.errorCopy}>{errorMessage}</p>
           </div>
         ) : null}
       </div>

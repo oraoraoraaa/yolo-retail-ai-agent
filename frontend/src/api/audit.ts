@@ -3,7 +3,7 @@
  *
  * The local model service returns annotated images + JSON detections. The
  * vision-model JSON is then matched against the active planogram and sent to
- * the agent backend for LLM analysis. If the agent is unavailable, the
+ * the backend for LLM analysis. If the backend is unavailable, the
  * frontend falls back to deterministic offline analysis.
  */
 import type { AuditAnalysisResult } from '@/types'
@@ -19,7 +19,11 @@ const DETECTION_AGENT_PATH = '/api/v1/audit/analyze-detections'
 
 export async function analyzeShelfImage(file: File, model: string, language: Language): Promise<AuditAnalysisResult> {
   const visionModelResponse = await detectUploadedImage(file, model)
-  return analyzeVisionModelResponse(visionModelResponse, language)
+  const imageBase64 = await fileToDataUrl(file)
+  return analyzeVisionModelResponse(visionModelResponse, language, {
+    imageBase64,
+    sourceLabel: file.name,
+  })
 }
 
 export async function analyzeShelfCameraCapture(
@@ -28,15 +32,24 @@ export async function analyzeShelfCameraCapture(
   language: Language,
 ): Promise<AuditAnalysisResult> {
   const visionModelResponse = await captureCameraDetection(camera, model)
-  return analyzeVisionModelResponse(visionModelResponse, language)
+  return analyzeVisionModelResponse(visionModelResponse, language, {
+    imageBase64: visionModelResponse.annotatedImage ?? null,
+    sourceLabel: `camera:${camera}`,
+  })
 }
 
 async function analyzeVisionModelResponse(
   visionModelResponse: LocalDetectionResult,
   language: Language,
+  options: { imageBase64?: string | null; sourceLabel?: string } = {},
 ): Promise<AuditAnalysisResult> {
   const planogramResponse = await queryPlanogramForDetections(visionModelResponse)
-  const agentResponse = await requestAgentShelfRecommendation(visionModelResponse, planogramResponse, language)
+  const agentResponse = await requestAgentShelfRecommendation(
+    visionModelResponse,
+    planogramResponse,
+    language,
+    options,
+  )
 
   return {
     ...agentResponse,
@@ -62,7 +75,8 @@ async function requestAgentShelfRecommendation(
   visionModelResponse: LocalDetectionResult,
   planogramResponse: PlanogramMatchResult | null,
   language: Language,
-): Promise<Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation'>> {
+  options: { imageBase64?: string | null; sourceLabel?: string } = {},
+): Promise<Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation' | 'recordId'>> {
   if (getApiBaseUrl()) {
     try {
       const response = await apiFetch(DETECTION_AGENT_PATH, {
@@ -71,12 +85,14 @@ async function requestAgentShelfRecommendation(
           visionModelResponse,
           planogramResponse,
           language,
+          imageBase64: options.imageBase64 ?? undefined,
+          sourceLabel: options.sourceLabel ?? undefined,
         }),
         headers: {
           'Content-Type': 'application/json',
         },
       })
-      return (await response.json()) as Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation'>
+      return (await response.json()) as Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation' | 'recordId'>
     } catch {
       // Fall through to local deterministic analysis if the agent service is unavailable.
     }
@@ -126,7 +142,7 @@ async function requestAgentShelfRecommendation(
     `Local vision detected ${total} object${total === 1 ? '' : 's'}: ` +
     `${productCount} product candidate${productCount === 1 ? '' : 's'} and ` +
     `${gapCount} gap candidate${gapCount === 1 ? '' : 's'}. ` +
-    'The agent backend is unavailable or not configured, so this offline recommendation only uses the vision-model JSON response.'
+    'The backend is unavailable or not configured, so this offline recommendation only uses the vision-model JSON response.'
   if (planogramResponse) {
     explanation += ` Matched against planogram '${planogramName}'. ${planogramResponse.summary}`
   } else {
@@ -134,4 +150,13 @@ async function requestAgentShelfRecommendation(
   }
 
   return { suggestedAction, explanation }
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image'))
+    reader.readAsDataURL(file)
+  })
 }
