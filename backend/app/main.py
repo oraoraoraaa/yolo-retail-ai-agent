@@ -22,6 +22,7 @@ from app.routers import (
     database_router,
     media_router,
     planogram_router,
+    tickets_router,
 )
 
 
@@ -58,6 +59,7 @@ app.include_router(chat_router)
 app.include_router(database_router)
 app.include_router(planogram_router)
 app.include_router(media_router)
+app.include_router(tickets_router)
 
 
 @app.get("/", tags=["meta"])

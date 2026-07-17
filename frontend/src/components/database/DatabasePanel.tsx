@@ -1,6 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
-import { queryDatabaseRecords, getDatabaseRecord } from '@/api'
+import {
+  queryDatabaseRecords,
+  getDatabaseRecord,
+  clearDatabaseRecords,
+  downloadSystemBackup,
+  restoreSystemBackup,
+} from '@/api'
 import { absoluteApiUrl, getAuthToken } from '@/api/client'
 import type { Language, UI_TEXT } from '@/lib/i18n'
 import type { DatabaseRecord, DatabaseRecordType } from '@/types'
@@ -42,6 +48,8 @@ export function DatabasePanel({ text }: DatabasePanelProps) {
   const [selected, setSelected] = useState<DatabaseRecord | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [statusLine, setStatusLine] = useState<string | null>(null)
+  const restoreInputRef = useRef<HTMLInputElement>(null)
 
   async function loadRecords(nextKeyword = keyword, nextFilter = filter): Promise<void> {
     setStatus('loading')
@@ -85,6 +93,79 @@ export function DatabasePanel({ text }: DatabasePanelProps) {
     }
   }
 
+  async function onClearAll(): Promise<void> {
+    if (!window.confirm(text.confirmClearAll)) {
+      return
+    }
+    setStatus('loading')
+    setErrorMessage(null)
+    setStatusLine(null)
+    try {
+      const result = await clearDatabaseRecords()
+      setRecords([])
+      setSelected(null)
+      setStatus('idle')
+      setStatusLine(
+        text.clearedAll
+          .replace('{count}', String(result.deleted ?? 0))
+          .replace('{media}', String(result.mediaDeleted ?? 0)),
+      )
+    } catch {
+      setErrorMessage(text.errors.clearFailed)
+      setStatus('error')
+    }
+  }
+
+  async function onBackup(): Promise<void> {
+    if (!window.confirm(text.confirmBackup)) {
+      return
+    }
+    setStatus('loading')
+    setErrorMessage(null)
+    setStatusLine(null)
+    try {
+      const blob = await downloadSystemBackup()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      anchor.href = url
+      anchor.download = `yolo-retail-backup-${stamp}.zip`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      setStatusLine(text.backupDone)
+      setStatus('idle')
+    } catch {
+      setErrorMessage(text.errors.backupFailed)
+      setStatus('error')
+    }
+  }
+
+  async function onRestoreFile(file: File): Promise<void> {
+    if (!window.confirm(text.confirmRestore)) {
+      return
+    }
+    setStatus('loading')
+    setErrorMessage(null)
+    setStatusLine(null)
+    try {
+      const result = await restoreSystemBackup(file)
+      if (!result.ok) {
+        setErrorMessage(result.message || text.errors.restoreFailed)
+        setStatus('error')
+        return
+      }
+      setStatusLine(result.message || text.restoreDone)
+      setSelected(null)
+      await loadRecords('', 'all')
+      setStatus('idle')
+    } catch {
+      setErrorMessage(text.errors.restoreFailed)
+      setStatus('error')
+    }
+  }
+
   const isLoading = status === 'loading'
   const typeLabels = text.typeLabels
   const selectedImage = mediaSrc(selected?.imageUrl)
@@ -99,10 +180,51 @@ export function DatabasePanel({ text }: DatabasePanelProps) {
           </h2>
           <p className={styles.subtitle}>{text.subtitle}</p>
         </div>
-        <button className={styles.refreshButton} type="button" disabled={isLoading} onClick={() => void loadRecords()}>
-          {isLoading ? text.loading : text.refresh}
-        </button>
+        <div className={styles.headerActions ?? undefined} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            className={styles.refreshButton}
+            type="button"
+            disabled={isLoading}
+            onClick={() => void onBackup()}
+          >
+            {text.backup}
+          </button>
+          <button
+            className={styles.refreshButton}
+            type="button"
+            disabled={isLoading}
+            onClick={() => restoreInputRef.current?.click()}
+          >
+            {text.restore}
+          </button>
+          <input
+            ref={restoreInputRef}
+            type="file"
+            accept=".zip,application/zip"
+            style={{ display: 'none' }}
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) {
+                void onRestoreFile(file)
+              }
+            }}
+          />
+          <button
+            className={styles.closeButton}
+            type="button"
+            disabled={isLoading || records.length === 0}
+            onClick={() => void onClearAll()}
+          >
+            {text.clearAll}
+          </button>
+          <button className={styles.refreshButton} type="button" disabled={isLoading} onClick={() => void loadRecords()}>
+            {isLoading ? text.loading : text.refresh}
+          </button>
+        </div>
       </header>
+
+      {statusLine ? <p className={styles.statusLine ?? styles.subtitle}>{statusLine}</p> : null}
 
       <form className={styles.toolbar} onSubmit={onSubmit}>
         <label className={styles.searchLabel}>

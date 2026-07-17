@@ -44,9 +44,13 @@ def _clean_singletons(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
     import app.services.agent as agent_mod
     import app.services.planogram_store as planogram_mod
+    from app.services.closed_loop import reset_closed_loop_agent
+    from app.services.ticket_store import reset_ticket_store
 
     agent_mod._agent = None
     planogram_mod._store = None
+    reset_ticket_store()
+    reset_closed_loop_agent()
 
     init_db()
 
@@ -58,6 +62,8 @@ def _clean_singletons(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     reset_store()
     agent_mod._agent = None
     planogram_mod._store = None
+    reset_ticket_store()
+    reset_closed_loop_agent()
 
 
 def test_offline_detection_action_english() -> None:

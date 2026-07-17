@@ -27,3 +27,6 @@ class AuditAnalysisResult(CamelModel):
     explanation: str
     # Persisted record id when the audit was saved.
     record_id: str | None = None
+    # Optional closed-loop ticket ids created/updated from this audit.
+    ticket_ids: list[str] = []
+    closed_loop_narrative: str | None = None

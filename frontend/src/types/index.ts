@@ -1,4 +1,12 @@
-export type { AuditAnalysisResult, AuditPanelState, AuditRequestStatus } from './audit'
+export type {
+  AuditAnalysisResult,
+  AuditPanelState,
+  AuditPipelineStep,
+  AuditRequestStatus,
+  AuditStepState,
+  AuditStepStatus,
+} from './audit'
+export { AUDIT_PIPELINE_STEPS, createInitialAuditSteps } from './audit'
 export type { AuthMe, AuthStatus, LoginResult } from './auth'
 export type {
   ChatAttachment,
@@ -18,3 +26,15 @@ export type {
   PlanogramSlot,
   PlanogramUpdatePayload,
 } from './planogram'
+export type {
+  AssigneeRole,
+  ClosedLoopRunResult,
+  IssueType,
+  Ticket,
+  TicketListResult,
+  TicketPriority,
+  TicketStatus,
+  VerifyTicketResult,
+  WebhookChannel,
+  WebhookSettings,
+} from './tickets'

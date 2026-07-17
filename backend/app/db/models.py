@@ -79,3 +79,42 @@ class AppSettingRow(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class TicketRow(Base):
+    """Action ticket produced by the closed-loop retail agent."""
+
+    __tablename__ = "tickets"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # out_of_stock | misplaced | low_stock | camera_issue
+    issue_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # critical | high | medium | low
+    priority: Mapped[str] = mapped_column(String(16), nullable=False, index=True, default="medium")
+    # open | dispatched | in_progress | done | verified | escalated | cancelled
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True, default="open")
+    # floor_staff | backroom | manager
+    assignee_role: Mapped[str] = mapped_column(String(32), nullable=False, default="floor_staff")
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sku: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    item_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    shelf_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    planogram_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    slot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    audit_record_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Evidence + loop history (detections, verify scans, webhook deliveries)
+    evidence_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    history_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Dedup key so repeated audits don't spam the board
+    fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    escalate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False, index=True
+    )

@@ -309,12 +309,88 @@
   color: #fff;
   text-align: left;
   cursor: grab;
-  overflow: hidden;
+  overflow: visible;
   touch-action: none;
 }
 
 .slotRect:hover {
   background: rgba(11, 122, 110, 0.34);
+}
+
+.slotSelected {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(11, 122, 110, 0.55);
+  z-index: 2;
+}
+
+.slotDragging {
+  cursor: grabbing;
+  opacity: 0.95;
+}
+
+.resizeHandle {
+  position: absolute;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid rgba(15, 40, 35, 0.55);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  z-index: 3;
+}
+
+.handle_nw {
+  left: -0.35rem;
+  top: -0.35rem;
+  cursor: nwse-resize;
+}
+
+.handle_ne {
+  right: -0.35rem;
+  top: -0.35rem;
+  cursor: nesw-resize;
+}
+
+.handle_sw {
+  left: -0.35rem;
+  bottom: -0.35rem;
+  cursor: nesw-resize;
+}
+
+.handle_se {
+  right: -0.35rem;
+  bottom: -0.35rem;
+  cursor: nwse-resize;
+}
+
+.handle_n {
+  left: calc(50% - 0.35rem);
+  top: -0.35rem;
+  cursor: ns-resize;
+}
+
+.handle_s {
+  left: calc(50% - 0.35rem);
+  bottom: -0.35rem;
+  cursor: ns-resize;
+}
+
+.handle_e {
+  right: -0.35rem;
+  top: calc(50% - 0.35rem);
+  cursor: ew-resize;
+}
+
+.handle_w {
+  left: -0.35rem;
+  top: calc(50% - 0.35rem);
+  cursor: ew-resize;
+}
+
+.shortcutHint {
+  margin: 0.25rem 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.8rem;
 }
 
 .slotFilled {

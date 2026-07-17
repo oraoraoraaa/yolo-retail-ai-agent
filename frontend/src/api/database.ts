@@ -35,3 +35,36 @@ export async function getDatabaseRecord(recordId: string): Promise<DatabaseRecor
   const response = await apiFetch(`${DATABASE_QUERY_PATH}/${encodeURIComponent(recordId)}`)
   return (await response.json()) as DatabaseRecord
 }
+
+export async function clearDatabaseRecords(): Promise<{
+  deleted: number
+  mediaDeleted?: number
+  message?: string
+}> {
+  if (!getApiBaseUrl()) {
+    return { deleted: 0 }
+  }
+  const response = await apiFetch(DATABASE_QUERY_PATH, { method: 'DELETE' })
+  return (await response.json()) as { deleted: number; mediaDeleted?: number; message?: string }
+}
+
+export async function downloadSystemBackup(): Promise<Blob> {
+  const response = await apiFetch('/api/v1/database/backup')
+  return await response.blob()
+}
+
+export async function restoreSystemBackup(
+  file: File,
+): Promise<{ ok: boolean; message: string; restored?: Record<string, number> }> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await apiFetch('/api/v1/database/backup/restore', {
+    method: 'POST',
+    body: form,
+  })
+  return (await response.json()) as {
+    ok: boolean
+    message: string
+    restored?: Record<string, number>
+  }
+}

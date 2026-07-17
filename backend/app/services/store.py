@@ -15,7 +15,7 @@ from sqlalchemy import func, or_, select
 from app.db.models import RecordRow
 from app.db.session import get_engine, get_session
 from app.schemas.database import DatabaseRecord, DatabaseRecordType
-from app.services.media import media_url_for, save_image_bytes
+from app.services.media import clear_media_subdir, delete_image_ref, media_url_for, save_image_bytes
 
 
 def _now() -> datetime:
@@ -160,6 +160,25 @@ class RecordStore:
                 )
             rows = session.scalars(stmt).all()
             return [_row_to_record(row) for row in rows]
+
+    def clear_all(self) -> tuple[int, int]:
+        """Delete every database-page record and orphaned audit media files.
+
+        Returns ``(records_deleted, media_files_deleted)``.
+        Does not touch planograms, users, tickets, or planogram images.
+        """
+        with get_session() as session:
+            rows = session.scalars(select(RecordRow)).all()
+            count_deleted = len(rows)
+            for row in rows:
+                delete_image_ref(row.image_ref)
+                session.delete(row)
+            session.flush()
+        # Catch any orphan files left under media/audits.
+        media_deleted = clear_media_subdir("audits")
+        # Reset id counter so new records start from rec-0001 again.
+        self._counter = count(1)
+        return count_deleted, media_deleted
 
 
 _store: RecordStore | None = None

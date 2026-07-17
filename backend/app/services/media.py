@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import re
+import shutil
 import uuid
 from pathlib import Path
 
@@ -92,3 +93,37 @@ def media_url_for(image_ref: str | None) -> str | None:
     if not image_ref:
         return None
     return f"/api/v1/media/{image_ref.lstrip('/')}"
+
+
+def delete_image_ref(image_ref: str | None) -> bool:
+    """Delete a single media file by relative ref. Returns True if a file was removed."""
+    path = resolve_media_path(image_ref)
+    if path is None:
+        return False
+    try:
+        path.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
+
+
+def clear_media_subdir(subdir: str) -> int:
+    """Delete all files under media/<subdir>/ (recreates empty folder). Returns file count removed."""
+    ensure_media_dirs()
+    target = (media_root() / subdir).resolve()
+    root = media_root().resolve()
+    if not str(target).startswith(str(root)) or target == root:
+        return 0
+    removed = 0
+    if target.exists():
+        for path in target.rglob("*"):
+            if path.is_file():
+                try:
+                    path.unlink()
+                    removed += 1
+                except OSError:
+                    pass
+        # Remove empty nested dirs then recreate the subdir.
+        shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True, exist_ok=True)
+    return removed

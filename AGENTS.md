@@ -84,7 +84,7 @@ Browser UI  (:5173)
 
 ### `frontend/` — React workspace
 
-- Pages: Camera Stream, Shelf Audit, Planogram, Agent Chat, Database.
+- Pages: Camera Stream, Shelf Audit, Planogram, Ticket Board, Agent Chat, Database.
 - API modules under `src/api/`; hooks under `src/hooks/`; types under `src/types/`.
 - Env:
   - `VITE_API_BASE_URL` → backend (`http://localhost:8000`); empty ⇒ chat/DB/planogram local stubs.
@@ -94,7 +94,10 @@ Browser UI  (:5173)
   planogram active.
 - Shelf audit flow: **detect via model-local**, match detections to the **active
   planogram** (`POST /api/v1/planograms/{id}/match`), then send both JSON blobs
-  to backend `POST /api/v1/audit/analyze-detections`.
+  to backend `POST /api/v1/audit/analyze-detections` (which also runs the
+  closed-loop ticket pipeline).
+- Ticket board: kanban of action tickets, status transitions, verify re-scan,
+  and admin webhook settings (Slack / WeCom / generic).
 - Commands: `npm install` / `npm run dev` / `npm run build` / `npm run lint`.
 
 ### `backend/` — FastAPI application API
@@ -104,14 +107,18 @@ backend/app/
   main.py          # app, CORS, lifespan init_db, /health
   config.py        # env settings (LOCAL_VISION_*, OPENAI_*, DATABASE_*, AUTH_*)
   db/              # SQLAlchemy models + session (SQLite default / Postgres via URL)
-  routers/         # auth, audit, chat, database, planogram, media
+  routers/         # auth, audit, chat, database, planogram, media, tickets
   schemas/         # camelCase Pydantic models
   services/
     detector.py         # HTTP client → model-local (no YOLO load)
     agent.py            # LLM retail agent + offline narratives
+    closed_loop.py      # Detect → Decide → Dispatch → Verify ticket graph
+    ticket_store.py     # SQL action tickets + status transitions
+    webhooks.py         # multi-endpoint Slack/WeCom/generic webhook dispatch
     store.py            # SQL record store (audits + image refs + detection JSON)
     planogram_store.py  # SQL planograms + active selection
     planogram_match.py  # map detection centers → grid slots
+    backup.py           # system backup zip export / validated restore
     auth.py             # JWT + bcrypt staff auth
     media.py            # on-disk image refs under backend/data/media
 ```
@@ -123,11 +130,22 @@ Important endpoints:
 | POST | `/api/v1/auth/login` | username/password → JWT |
 | GET | `/api/v1/auth/status` | `{ authEnabled, authenticated, ... }` |
 | GET | `/api/v1/auth/me` | current user (auth when enabled) |
-| POST | `/api/v1/audit/analyze` | multipart image → model-local → narrative + persisted audit |
-| POST | `/api/v1/audit/analyze-detections` | vision JSON + optional imageBase64 → narrative + persisted audit |
+| POST | `/api/v1/audit/analyze` | multipart image → model-local → narrative + persisted audit + tickets |
+| POST | `/api/v1/audit/analyze-detections` | vision JSON + optional imageBase64 → narrative + tickets |
+| GET/POST | `/api/v1/tickets` | list / manually create action tickets |
+| PATCH | `/api/v1/tickets/{id}` | update ticket status (open → done → …) |
+| POST | `/api/v1/tickets/{id}/dispatch` | re-send webhook notification |
+| POST | `/api/v1/agent/closed-loop/run` | Detect → Decide → Dispatch over a shelf snapshot |
+| POST | `/api/v1/agent/closed-loop/verify/{id}` | after done: re-scan, verify or escalate |
+| GET/PUT | `/api/v1/admin/webhooks` | admin Slack/WeCom/generic webhook settings |
+| POST | `/api/v1/admin/webhooks/test` | send a test webhook message |
 | GET/POST | `/api/v1/planograms` | list / create planograms (SQL) |
 | PUT | `/api/v1/planograms/active` | choose planogram used by audits |
 | POST | `/api/v1/planograms/{id}/match` | match vision detections to grid slots |
+| DELETE | `/api/v1/planograms/{id}` | delete planogram + its media image |
+| DELETE | `/api/v1/database/records` | clear DB-page records + `media/audits` |
+| GET | `/api/v1/database/backup` | download full system backup zip |
+| POST | `/api/v1/database/backup/restore` | validate + restore backup zip |
 | POST | `/api/v1/agent/chat` | JSON or multipart |
 | GET | `/api/v1/database/records` | SQL store (optional keyword/type) |
 | GET | `/api/v1/database/records/{id}` | single record with detection JSON / image refs |

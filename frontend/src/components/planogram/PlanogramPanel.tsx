@@ -55,6 +55,17 @@ interface DragState {
   moved: boolean
 }
 
+type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'
+
+interface ResizeState {
+  slotId: string
+  handle: ResizeHandle
+  origin: { x: number; y: number; width: number; height: number }
+  pointerStartX: number
+  pointerStartY: number
+  moved: boolean
+}
+
 /** Slot payload kept in the in-editor clipboard (no id). */
 type ClipboardSlot = Omit<PlanogramSlot, 'id'>
 
@@ -132,6 +143,38 @@ function clampSlotPosition(slot: ClipboardSlot, x: number, y: number): { x: numb
   }
 }
 
+function applyResize(
+  origin: { x: number; y: number; width: number; height: number },
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+): { x: number; y: number; width: number; height: number } {
+  let left = origin.x
+  let top = origin.y
+  let right = origin.x + origin.width
+  let bottom = origin.y + origin.height
+
+  if (handle.includes('w')) {
+    left = Math.max(0, Math.min(right - MIN_SLOT_SIZE, origin.x + dx))
+  }
+  if (handle.includes('e')) {
+    right = Math.min(1, Math.max(left + MIN_SLOT_SIZE, origin.x + origin.width + dx))
+  }
+  if (handle.includes('n')) {
+    top = Math.max(0, Math.min(bottom - MIN_SLOT_SIZE, origin.y + dy))
+  }
+  if (handle.includes('s')) {
+    bottom = Math.min(1, Math.max(top + MIN_SLOT_SIZE, origin.y + origin.height + dy))
+  }
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(MIN_SLOT_SIZE, right - left),
+    height: Math.max(MIN_SLOT_SIZE, bottom - top),
+  }
+}
+
 /**
  * Prefer placing a pasted facing immediately to the right (same shelf row).
  * Fall back below, then a small diagonal nudge if the shelf edge is tight.
@@ -206,6 +249,7 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
   const [clipboardSlot, setClipboardSlot] = useState<ClipboardSlot | null>(null)
   const [drawState, setDrawState] = useState<DrawState | null>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
+  const [resizeState, setResizeState] = useState<ResizeState | null>(null)
   const [busy, setBusy] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
@@ -218,10 +262,12 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
   const clipboardRef = useRef<ClipboardSlot | null>(null)
   const draftSlotsRef = useRef<PlanogramSlot[]>([])
   const dragStateRef = useRef<DragState | null>(null)
+  const resizeStateRef = useRef<ResizeState | null>(null)
   selectedSlotRef.current = selectedSlot
   clipboardRef.current = clipboardSlot
   draftSlotsRef.current = draft.slots
   dragStateRef.current = dragState
+  resizeStateRef.current = resizeState
 
   const draftRect = useMemo(() => {
     if (!drawState) {
@@ -313,12 +359,12 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
   }
 
   function onCanvasPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (!draft.imageBase64 || busy || dragStateRef.current) {
+    if (!draft.imageBase64 || busy || dragStateRef.current || resizeStateRef.current) {
       return
     }
     // Allow selecting/dragging existing slots via their buttons; only draw on empty canvas.
     const target = event.target as HTMLElement
-    if (target.closest(`.${styles.slotRect}`)) {
+    if (target.closest(`.${styles.slotRect}`) || target.closest(`.${styles.resizeHandle}`)) {
       return
     }
     const point = pointerToNormalized(event)
@@ -338,6 +384,33 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
   function onCanvasPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
     const point = pointerToNormalized(event)
     if (!point) {
+      return
+    }
+
+    const activeResize = resizeStateRef.current
+    if (activeResize) {
+      const dx = point.x - activeResize.pointerStartX
+      const dy = point.y - activeResize.pointerStartY
+      if (!activeResize.moved && Math.hypot(dx, dy) >= 0.003) {
+        const nextResize = { ...activeResize, moved: true }
+        resizeStateRef.current = nextResize
+        setResizeState(nextResize)
+      }
+      const nextRect = applyResize(activeResize.origin, activeResize.handle, dx, dy)
+      setDraft((previous) => ({
+        ...previous,
+        slots: previous.slots.map((item) =>
+          item.id === activeResize.slotId
+            ? {
+                ...item,
+                x: nextRect.x,
+                y: nextRect.y,
+                width: nextRect.width,
+                height: nextRect.height,
+              }
+            : item,
+        ),
+      }))
       return
     }
 
@@ -379,6 +452,21 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
   }
 
   function onCanvasPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+    const activeResize = resizeStateRef.current
+    if (activeResize) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      } catch {
+        // ignore if capture already released
+      }
+      resizeStateRef.current = null
+      setResizeState(null)
+      if (activeResize.moved) {
+        setStatusMessage(text.resized)
+      }
+      return
+    }
+
     const activeDrag = dragStateRef.current
     if (activeDrag) {
       try {
@@ -428,7 +516,7 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
   }
 
   function onSlotPointerDown(event: ReactPointerEvent<HTMLButtonElement>, slot: PlanogramSlot): void {
-    if (busy || !draft.imageBase64) {
+    if (busy || !draft.imageBase64 || resizeStateRef.current) {
       return
     }
     event.stopPropagation()
@@ -452,14 +540,85 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
     canvasRef.current?.setPointerCapture(event.pointerId)
   }
 
+  function onResizeHandlePointerDown(
+    event: ReactPointerEvent<HTMLSpanElement>,
+    slot: PlanogramSlot,
+    handle: ResizeHandle,
+  ): void {
+    if (busy || !draft.imageBase64) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const point = pointerToNormalized(event)
+    if (!point) {
+      return
+    }
+    const nextResize: ResizeState = {
+      slotId: slot.id,
+      handle,
+      origin: { x: slot.x, y: slot.y, width: slot.width, height: slot.height },
+      pointerStartX: point.x,
+      pointerStartY: point.y,
+      moved: false,
+    }
+    resizeStateRef.current = nextResize
+    setResizeState(nextResize)
+    dragStateRef.current = null
+    setDragState(null)
+    setSelectedSlotId(slot.id)
+    setDrawState(null)
+    canvasRef.current?.setPointerCapture(event.pointerId)
+  }
+
   function updateSelectedSlot(patch: Partial<PlanogramSlot>): void {
     if (!selectedSlotId) {
       return
     }
-    setDraft((previous) => ({
-      ...previous,
-      slots: previous.slots.map((slot) => (slot.id === selectedSlotId ? { ...slot, ...patch, id: slot.id } : slot)),
-    }))
+    // Geometry is always per-slot. Item metadata (name/price/stock/sku/notes)
+    // is shared across every region that currently has the same non-empty SKU.
+    const geometryKeys = new Set(['x', 'y', 'width', 'height', 'id'])
+    const metaPatch: Partial<PlanogramSlot> = {}
+    const geometryPatch: Partial<PlanogramSlot> = {}
+    for (const [key, value] of Object.entries(patch) as Array<
+      [keyof PlanogramSlot, PlanogramSlot[keyof PlanogramSlot]]
+    >) {
+      if (geometryKeys.has(key)) {
+        ;(geometryPatch as Record<string, unknown>)[key] = value
+      } else {
+        ;(metaPatch as Record<string, unknown>)[key] = value
+      }
+    }
+
+    setDraft((previous) => {
+      const selected = previous.slots.find((slot) => slot.id === selectedSlotId)
+      if (!selected) {
+        return previous
+      }
+
+      // Group by the SKU *before* this edit so changing SKU / name / stock / notes
+      // on one facing updates every facing that currently shares that SKU.
+      const groupSku = String(selected.sku || '').trim().toLowerCase()
+      const hasMetaPatch = Object.keys(metaPatch).length > 0
+
+      return {
+        ...previous,
+        slots: previous.slots.map((slot) => {
+          if (slot.id === selectedSlotId) {
+            return { ...slot, ...geometryPatch, ...metaPatch, id: slot.id }
+          }
+          if (!hasMetaPatch || !groupSku) {
+            return slot
+          }
+          const slotSku = String(slot.sku || '').trim().toLowerCase()
+          if (!slotSku || slotSku !== groupSku) {
+            return slot
+          }
+          // Shared item fields only — keep each region's own rectangle.
+          return { ...slot, ...metaPatch, id: slot.id }
+        }),
+      }
+    })
   }
 
   function deleteSelectedSlot(): void {
@@ -543,6 +702,20 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
       }
       const key = event.key.toLowerCase()
       const hasModifier = event.metaKey || event.ctrlKey
+
+      // Delete/Backspace removes the selected region when focus is not in a text field.
+      if ((event.key === 'Delete' || event.key === 'Backspace') && !hasModifier) {
+        if (isEditableTarget(event.target)) {
+          return
+        }
+        if (selectedSlotRef.current) {
+          event.preventDefault()
+          deleteSelectedSlot()
+          setStatusMessage(text.regionDeleted)
+        }
+        return
+      }
+
       if (!hasModifier) {
         return
       }
@@ -688,7 +861,10 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
           <div className={styles.workspace}>
             <div className={styles.canvasCard}>
               <div className={styles.canvasToolbar}>
-                <p className={styles.canvasHint}>{text.drawHint}</p>
+                <div>
+                  <p className={styles.canvasHint}>{text.drawHint}</p>
+                  <p className={styles.shortcutHint}>{text.shortcutsHint}</p>
+                </div>
                 <div className={styles.actions}>
                   <button
                     type="button"
@@ -720,6 +896,18 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
                   <button
                     type="button"
                     className={styles.ghostButton}
+                    disabled={busy || !selectedSlot}
+                    onClick={() => {
+                      deleteSelectedSlot()
+                      setStatusMessage(text.regionDeleted)
+                    }}
+                    title={text.deleteShortcut}
+                  >
+                    {text.deleteRegion}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
                     disabled={busy}
                     onClick={() => inputRef.current?.click()}
                   >
@@ -742,7 +930,7 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
 
               <div
                 ref={canvasRef}
-                className={`${styles.canvas} ${draft.imageBase64 ? styles.canvasDrawable : ''} ${dragState ? styles.canvasDragging : ''}`}
+                className={`${styles.canvas} ${draft.imageBase64 ? styles.canvasDrawable : ''} ${dragState || resizeState ? styles.canvasDragging : ''}`}
                 onPointerDown={onCanvasPointerDown}
                 onPointerMove={onCanvasPointerMove}
                 onPointerUp={onCanvasPointerUp}
@@ -750,6 +938,8 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
                   setDrawState(null)
                   dragStateRef.current = null
                   setDragState(null)
+                  resizeStateRef.current = null
+                  setResizeState(null)
                 }}
               >
                 {draft.imageBase64 ? (
@@ -762,11 +952,13 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
                   const filled = Boolean(slot.itemName || slot.sku)
                   const isSelected = selectedSlotId === slot.id
                   const isDragging = dragState?.slotId === slot.id
+                  const isResizing = resizeState?.slotId === slot.id
+                  const handles: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
                   return (
                     <button
                       key={slot.id}
                       type="button"
-                      className={`${styles.slotRect} ${filled ? styles.slotFilled : ''} ${isSelected ? styles.slotSelected : ''} ${isDragging ? styles.slotDragging : ''}`}
+                      className={`${styles.slotRect} ${filled ? styles.slotFilled : ''} ${isSelected ? styles.slotSelected : ''} ${isDragging || isResizing ? styles.slotDragging : ''}`}
                       style={{
                         left: `${slot.x * 100}%`,
                         top: `${slot.y * 100}%`,
@@ -775,14 +967,24 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
                       }}
                       onClick={(event) => {
                         event.stopPropagation()
-                        // Keep selection after a pure click (no drag).
-                        if (!dragStateRef.current?.moved) {
+                        // Keep selection after a pure click (no drag/resize).
+                        if (!dragStateRef.current?.moved && !resizeStateRef.current?.moved) {
                           setSelectedSlotId(slot.id)
                         }
                       }}
                       onPointerDown={(event) => onSlotPointerDown(event, slot)}
                     >
                       <span className={styles.slotLabel}>{slot.itemName || slot.sku || text.emptyRegion}</span>
+                      {isSelected
+                        ? handles.map((handle) => (
+                            <span
+                              key={handle}
+                              className={`${styles.resizeHandle} ${styles[`handle_${handle}`]}`}
+                              onPointerDown={(event) => onResizeHandlePointerDown(event, slot, handle)}
+                              aria-label={`${text.resizeHandle} ${handle}`}
+                            />
+                          ))
+                        : null}
                     </button>
                   )
                 })}

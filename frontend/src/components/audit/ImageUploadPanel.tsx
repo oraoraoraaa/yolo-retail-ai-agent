@@ -9,12 +9,13 @@ import {
   type StreamModel,
 } from '@/api'
 import type { Language, UI_TEXT } from '@/lib/i18n'
-import type { AuditPanelState } from '@/types'
+import type { AuditPanelState, AuditPipelineStep } from '@/types'
 import type { Planogram } from '@/types/planogram'
 
 import styles from './ImageUploadPanel.module.css'
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const STEP_ORDER: AuditPipelineStep[] = ['vision', 'planogram', 'agent', 'tickets', 'done']
 
 interface ImageUploadPanelProps {
   text: (typeof UI_TEXT)[Language]['audit']
@@ -30,6 +31,18 @@ interface ImageUploadPanelProps {
 
 function isAcceptedImage(file: File): boolean {
   return ACCEPTED_TYPES.includes(file.type) || /\.(jpe?g|png|webp|gif)$/i.test(file.name)
+}
+
+function stepLabel(text: ImageUploadPanelProps['text'], step: AuditPipelineStep): string {
+  return text.stepLabels[step]
+}
+
+function stepStatusLabel(text: ImageUploadPanelProps['text'], status: string): string {
+  if (status === 'running') return text.stepRunning
+  if (status === 'done') return text.stepDone
+  if (status === 'skipped') return text.stepSkipped
+  if (status === 'error') return text.stepError
+  return text.stepPending
 }
 
 export function ImageUploadPanel({
@@ -59,6 +72,18 @@ export function ImageUploadPanel({
   const suggestedAction = state.result?.suggestedAction ?? ''
   const explanation = state.result?.explanation ?? ''
   const planogramMatch = state.result?.planogramResponse ?? null
+  const ticketIds = state.result?.ticketIds ?? []
+  const closedLoopNarrative = state.result?.closedLoopNarrative ?? ''
+  const steps = state.steps?.length
+    ? state.steps
+    : STEP_ORDER.map((id) => ({ id, status: 'pending' as const }))
+  const completedCount = steps.filter((step) => step.status === 'done' || step.status === 'skipped').length
+  const progressPercent = Math.max(8, Math.round((completedCount / steps.length) * 100))
+  const activeStepLabel = state.activeStep
+    ? stepLabel(text, state.activeStep)
+    : isBusy
+      ? text.progressCopy
+      : text.progressTitle
 
   useEffect(() => {
     let cancelled = false
@@ -309,16 +334,29 @@ export function ImageUploadPanel({
         <p className={styles.statusLine}>{text.ready}</p>
       ) : null}
       {isMonitoring ? <p className={styles.statusLine}>{text.monitoring}</p> : null}
-      {isBusy ? (
+      {isBusy || state.status === 'success' ? (
         <div className={styles.progressPanel} role="status" aria-live="polite">
           <div className={styles.progressHeader}>
             <span>{text.progressTitle}</span>
-            <span>{text.progressHint}</span>
+            <span>{isBusy ? activeStepLabel : text.progressComplete}</span>
           </div>
           <div className={styles.progressTrack}>
-            <span className={styles.progressBar} />
+            <span
+              className={`${styles.progressBar} ${isBusy ? styles.progressBarAnimated : styles.progressBarSolid}`}
+              style={isBusy ? undefined : { width: `${progressPercent}%`, transform: 'none' }}
+            />
           </div>
-          <p className={styles.statusLine}>{text.progressCopy}</p>
+          <ol className={styles.stepList}>
+            {steps.map((step) => (
+              <li
+                key={step.id}
+                className={`${styles.stepItem} ${styles[`step_${step.status}`] ?? ''}`}
+              >
+                <span className={styles.stepName}>{stepLabel(text, step.id)}</span>
+                <span className={styles.stepStatus}>{stepStatusLabel(text, step.status)}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       ) : null}
       {localError ? <p className={styles.errorLine}>{localError}</p> : null}
@@ -361,6 +399,26 @@ export function ImageUploadPanel({
             </div>
           ) : (
             <p className={`${styles.boxBody} ${styles.boxEmpty}`}>{text.noMatchYet}</p>
+          )}
+        </article>
+
+        <article className={`${styles.box} ${styles.explanationBox}`} aria-live="polite">
+          <h3 className={styles.boxLabel}>{text.ticketsOpened}</h3>
+          {ticketIds.length > 0 || closedLoopNarrative ? (
+            <div className={styles.boxBody}>
+              {closedLoopNarrative ? <p>{closedLoopNarrative}</p> : null}
+              {ticketIds.length > 0 ? (
+                <ul className={styles.missingList}>
+                  {ticketIds.map((ticketId) => (
+                    <li key={ticketId}>{ticketId}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{text.noTickets}</p>
+              )}
+            </div>
+          ) : (
+            <p className={`${styles.boxBody} ${styles.boxEmpty}`}>{text.noTickets}</p>
           )}
         </article>
       </div>

@@ -1,10 +1,12 @@
 /**
  * Upload a shelf image for gap / inventory analysis.
  *
- * The local model service returns annotated images + JSON detections. The
- * vision-model JSON is then matched against the active planogram and sent to
- * the backend for LLM analysis. If the backend is unavailable, the
- * frontend falls back to deterministic offline analysis.
+ * Pipeline (progressive, with optional step callbacks):
+ * 1) vision detect (model-local)
+ * 2) planogram match
+ * 3) agent analyze + ticket dispatch (backend)
+ *
+ * If the backend is unavailable, the frontend falls back to deterministic offline analysis.
  */
 import type { AuditAnalysisResult } from '@/types'
 import type { PlanogramMatchResult } from '@/types/planogram'
@@ -17,12 +19,46 @@ import { captureCameraDetection, detectUploadedImage, type LocalDetectionResult 
 
 const DETECTION_AGENT_PATH = '/api/v1/audit/analyze-detections'
 
-export async function analyzeShelfImage(file: File, model: string, language: Language): Promise<AuditAnalysisResult> {
+export type AuditPipelineStep =
+  | 'vision'
+  | 'planogram'
+  | 'agent'
+  | 'tickets'
+  | 'done'
+
+export interface AuditProgressEvent {
+  step: AuditPipelineStep
+  status: 'running' | 'done' | 'skipped' | 'error'
+  message?: string
+  partial?: Partial<AuditAnalysisResult>
+}
+
+export type AuditProgressHandler = (event: AuditProgressEvent) => void
+
+export async function analyzeShelfImage(
+  file: File,
+  model: string,
+  language: Language,
+  onProgress?: AuditProgressHandler,
+): Promise<AuditAnalysisResult> {
+  onProgress?.({ step: 'vision', status: 'running' })
   const visionModelResponse = await detectUploadedImage(file, model)
+  onProgress?.({
+    step: 'vision',
+    status: 'done',
+    partial: {
+      annotatedImage: visionModelResponse.annotatedImage,
+      visionModelResponse,
+      detections: visionModelResponse.detections,
+      detectionSummary: visionModelResponse.summary,
+    },
+  })
+
   const imageBase64 = await fileToDataUrl(file)
   return analyzeVisionModelResponse(visionModelResponse, language, {
     imageBase64,
     sourceLabel: file.name,
+    onProgress,
   })
 }
 
@@ -30,28 +66,74 @@ export async function analyzeShelfCameraCapture(
   camera: string,
   model: string,
   language: Language,
+  onProgress?: AuditProgressHandler,
 ): Promise<AuditAnalysisResult> {
+  onProgress?.({ step: 'vision', status: 'running' })
   const visionModelResponse = await captureCameraDetection(camera, model)
+  onProgress?.({
+    step: 'vision',
+    status: 'done',
+    partial: {
+      annotatedImage: visionModelResponse.annotatedImage,
+      visionModelResponse,
+      detections: visionModelResponse.detections,
+      detectionSummary: visionModelResponse.summary,
+    },
+  })
+
   return analyzeVisionModelResponse(visionModelResponse, language, {
     imageBase64: visionModelResponse.annotatedImage ?? null,
     sourceLabel: `camera:${camera}`,
+    onProgress,
   })
 }
 
 async function analyzeVisionModelResponse(
   visionModelResponse: LocalDetectionResult,
   language: Language,
-  options: { imageBase64?: string | null; sourceLabel?: string } = {},
+  options: {
+    imageBase64?: string | null
+    sourceLabel?: string
+    onProgress?: AuditProgressHandler
+  } = {},
 ): Promise<AuditAnalysisResult> {
+  const onProgress = options.onProgress
+
+  onProgress?.({ step: 'planogram', status: 'running' })
   const planogramResponse = await queryPlanogramForDetections(visionModelResponse)
+  onProgress?.({
+    step: 'planogram',
+    status: planogramResponse ? 'done' : 'skipped',
+    partial: { planogramResponse },
+  })
+
+  onProgress?.({ step: 'agent', status: 'running' })
   const agentResponse = await requestAgentShelfRecommendation(
     visionModelResponse,
     planogramResponse,
     language,
     options,
   )
+  onProgress?.({
+    step: 'agent',
+    status: 'done',
+    partial: {
+      suggestedAction: agentResponse.suggestedAction,
+      explanation: agentResponse.explanation,
+      recordId: agentResponse.recordId,
+    },
+  })
 
-  return {
+  onProgress?.({
+    step: 'tickets',
+    status: agentResponse.ticketIds && agentResponse.ticketIds.length > 0 ? 'done' : 'skipped',
+    partial: {
+      ticketIds: agentResponse.ticketIds,
+      closedLoopNarrative: agentResponse.closedLoopNarrative,
+    },
+  })
+
+  const result: AuditAnalysisResult = {
     ...agentResponse,
     annotatedImage: visionModelResponse.annotatedImage,
     visionModelResponse,
@@ -59,6 +141,9 @@ async function analyzeVisionModelResponse(
     detectionSummary: visionModelResponse.summary,
     planogramResponse,
   }
+
+  onProgress?.({ step: 'done', status: 'done', partial: result })
+  return result
 }
 
 async function queryPlanogramForDetections(
@@ -76,7 +161,9 @@ async function requestAgentShelfRecommendation(
   planogramResponse: PlanogramMatchResult | null,
   language: Language,
   options: { imageBase64?: string | null; sourceLabel?: string } = {},
-): Promise<Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation' | 'recordId'>> {
+): Promise<
+  Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation' | 'recordId' | 'ticketIds' | 'closedLoopNarrative'>
+> {
   if (getApiBaseUrl()) {
     try {
       const response = await apiFetch(DETECTION_AGENT_PATH, {
@@ -92,7 +179,10 @@ async function requestAgentShelfRecommendation(
           'Content-Type': 'application/json',
         },
       })
-      return (await response.json()) as Pick<AuditAnalysisResult, 'suggestedAction' | 'explanation' | 'recordId'>
+      return (await response.json()) as Pick<
+        AuditAnalysisResult,
+        'suggestedAction' | 'explanation' | 'recordId' | 'ticketIds' | 'closedLoopNarrative'
+      >
     } catch {
       // Fall through to local deterministic analysis if the agent service is unavailable.
     }

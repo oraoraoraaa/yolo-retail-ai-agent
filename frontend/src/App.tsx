@@ -7,6 +7,7 @@ import { DatabasePanel } from '@/components/database/DatabasePanel'
 import { AppShell, type AppPage, type AppPageId } from '@/components/layout/AppShell'
 import { PlanogramPanel } from '@/components/planogram/PlanogramPanel'
 import { StreamPanel } from '@/components/stream/StreamPanel'
+import { TicketBoardPanel } from '@/components/tickets/TicketBoardPanel'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useAuditAnalysis } from '@/hooks/useAuditAnalysis'
 import { useAuth } from '@/hooks/useAuth'
@@ -40,6 +41,11 @@ function App() {
       id: 'planogram',
       label: text.pages.planogram[0],
       description: text.pages.planogram[1],
+    },
+    {
+      id: 'tickets',
+      label: text.pages.tickets[0],
+      description: text.pages.tickets[1],
     },
     {
       id: 'chat',
@@ -110,6 +116,14 @@ function App() {
       ) : null}
 
       {activePageId === 'planogram' ? <PlanogramPanel text={text.planogram} /> : null}
+
+      {activePageId === 'tickets' ? (
+        <TicketBoardPanel
+          text={text.tickets}
+          language={language}
+          isAdmin={!auth.authEnabled || auth.role === 'admin'}
+        />
+      ) : null}
 
       {activePageId === 'chat' ? (
         <ChatPanel

@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from app.db.models import AppSettingRow, PlanogramRow
 from app.db.session import get_engine, get_session
 from app.schemas.planogram import Planogram, PlanogramCreate, PlanogramSlot, PlanogramUpdate
-from app.services.media import media_url_for, save_image_base64
+from app.services.media import delete_image_ref, media_url_for, save_image_base64
 
 ACTIVE_SETTING_KEY = "active_planogram_id"
 
@@ -275,12 +275,16 @@ class PlanogramStore:
                 existing.slots_json = _slots_to_json(_normalize_slots(payload.slots))
             if payload.image_base64 is not None:
                 image_base64 = payload.image_base64
+                previous_ref = existing.image_ref
                 image_ref = save_image_base64("planograms", image_base64, stem=planogram_id) if image_base64 else None
                 existing.image_ref = image_ref
                 if image_ref and len(image_base64) > 200_000:
                     existing.image_base64 = ""
                 else:
                     existing.image_base64 = image_base64
+                # Remove previous on-disk image when replaced or cleared.
+                if previous_ref and previous_ref != image_ref:
+                    delete_image_ref(previous_ref)
 
             existing.updated_at = _now()
             session.flush()
@@ -291,11 +295,14 @@ class PlanogramStore:
             existing = session.get(PlanogramRow, planogram_id)
             if existing is None:
                 raise KeyError(planogram_id)
+            image_ref = existing.image_ref
             session.delete(existing)
             active = self._get_setting(session, ACTIVE_SETTING_KEY)
             if active == planogram_id:
                 remaining = session.scalars(select(PlanogramRow.id).limit(1)).first()
                 self._set_setting(session, ACTIVE_SETTING_KEY, remaining)
+        # Delete media outside the DB transaction so a missing file never rolls back.
+        delete_image_ref(image_ref)
 
 
 _store: PlanogramStore | None = None

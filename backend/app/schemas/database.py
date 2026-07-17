@@ -30,3 +30,28 @@ class DatabaseQueryResult(CamelModel):
     """Envelope returned by ``GET /api/v1/database/records``."""
 
     records: list[DatabaseRecord] = Field(default_factory=list)
+
+
+class DatabaseClearResult(CamelModel):
+    """Result of wiping database-page records only."""
+
+    deleted: int
+    media_deleted: int = 0
+    message: str = "Database records cleared."
+
+
+class BackupMeta(CamelModel):
+    """Manifest metadata for a system backup archive."""
+
+    version: int = 1
+    created_at: str
+    app: str = "yolo-retail-ai-agent"
+    database_scheme: str = "sqlite"
+
+
+class BackupRestoreResult(CamelModel):
+    """Result of restoring a system backup zip."""
+
+    ok: bool
+    message: str
+    restored: dict[str, int] = Field(default_factory=dict)

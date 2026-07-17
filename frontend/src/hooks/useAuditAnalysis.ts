@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { analyzeShelfCameraCapture, analyzeShelfImage } from '@/api'
+import {
+  analyzeShelfCameraCapture,
+  analyzeShelfImage,
+  type AuditProgressEvent,
+} from '@/api/audit'
 import type { Language } from '@/lib/i18n'
-import type { AuditPanelState } from '@/types'
+import {
+  createInitialAuditSteps,
+  type AuditPanelState,
+  type AuditPipelineStep,
+  type AuditStepState,
+} from '@/types/audit'
 
 const INITIAL_STATE: AuditPanelState = {
   status: 'idle',
@@ -10,10 +19,20 @@ const INITIAL_STATE: AuditPanelState = {
   fileName: null,
   result: null,
   errorMessage: null,
+  steps: createInitialAuditSteps(),
+  activeStep: null,
 }
 
 /** Cap how far the monitor interval stretches after consecutive failures. */
 const MAX_BACKOFF_MULTIPLIER = 8
+
+function updateSteps(
+  steps: AuditStepState[],
+  step: AuditPipelineStep,
+  status: AuditStepState['status'],
+): AuditStepState[] {
+  return steps.map((item) => (item.id === step ? { ...item, status } : item))
+}
 
 export function useAuditAnalysis() {
   const [state, setState] = useState<AuditPanelState>(INITIAL_STATE)
@@ -39,6 +58,50 @@ export function useAuditAnalysis() {
     }
   }, [])
 
+  function applyProgress(event: AuditProgressEvent): void {
+    setState((previous) => {
+      const nextSteps = updateSteps(
+        previous.steps.length ? previous.steps : createInitialAuditSteps(),
+        event.step,
+        event.status === 'running'
+          ? 'running'
+          : event.status === 'done'
+            ? 'done'
+            : event.status === 'skipped'
+              ? 'skipped'
+              : 'error',
+      )
+
+      const partial = event.partial ?? {}
+      const mergedResult = {
+        ...(previous.result ?? {
+          suggestedAction: '',
+          explanation: '',
+        }),
+        ...partial,
+      }
+
+      let previewUrl = previous.previewUrl
+      if (partial.annotatedImage) {
+        if (previewUrlRef.current && previewUrlRef.current.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrlRef.current)
+          previewUrlRef.current = null
+        }
+        previewUrl = partial.annotatedImage
+      }
+
+      return {
+        ...previous,
+        status: event.step === 'done' && event.status === 'done' ? 'success' : 'analyzing',
+        previewUrl,
+        result: mergedResult,
+        steps: nextSteps,
+        activeStep: event.status === 'running' ? event.step : event.step === 'done' ? null : previous.activeStep,
+        errorMessage: null,
+      }
+    })
+  }
+
   function selectImage(file: File): void {
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current)
@@ -54,6 +117,8 @@ export function useAuditAnalysis() {
       fileName: file.name,
       result: null,
       errorMessage: null,
+      steps: createInitialAuditSteps(),
+      activeStep: null,
     })
   }
 
@@ -73,13 +138,14 @@ export function useAuditAnalysis() {
       status: 'analyzing',
       result: null,
       errorMessage: null,
+      steps: createInitialAuditSteps(),
+      activeStep: 'vision',
     }))
 
     try {
-      const result = await analyzeShelfImage(file, model, language)
-      // Prefer the detector's annotated frame (boxes drawn) over the original upload preview.
+      const result = await analyzeShelfImage(file, model, language, applyProgress)
       if (result.annotatedImage) {
-        if (previewUrlRef.current) {
+        if (previewUrlRef.current && previewUrlRef.current.startsWith('blob:')) {
           URL.revokeObjectURL(previewUrlRef.current)
           previewUrlRef.current = null
         }
@@ -90,14 +156,18 @@ export function useAuditAnalysis() {
         previewUrl: result.annotatedImage ?? previous.previewUrl,
         result,
         errorMessage: null,
+        activeStep: null,
+        steps: previous.steps.map((step) =>
+          step.status === 'pending' ? { ...step, status: 'done' } : step,
+        ),
       }))
-    } catch (error) {
+    } catch {
       const message = language === 'zh' ? '图片分析失败。' : 'Image analysis failed.'
       setState((previous) => ({
         ...previous,
         status: 'error',
-        result: null,
         errorMessage: message,
+        activeStep: null,
       }))
     }
   }
@@ -114,10 +184,12 @@ export function useAuditAnalysis() {
       fileName: language === 'zh' ? `摄像头 ${camera} 抓拍` : `Camera ${camera} capture`,
       result: null,
       errorMessage: null,
+      steps: createInitialAuditSteps(),
+      activeStep: 'vision',
     }))
 
     try {
-      const result = await analyzeShelfCameraCapture(camera, model, language)
+      const result = await analyzeShelfCameraCapture(camera, model, language, applyProgress)
       setState((previous) => ({
         ...previous,
         status: 'success',
@@ -125,16 +197,20 @@ export function useAuditAnalysis() {
         fileName: language === 'zh' ? `摄像头 ${camera} 抓拍` : `Camera ${camera} capture`,
         result,
         errorMessage: null,
+        activeStep: null,
+        steps: previous.steps.map((step) =>
+          step.status === 'pending' ? { ...step, status: 'done' } : step,
+        ),
       }))
       failureStreakRef.current = 0
-    } catch (error) {
+    } catch {
       failureStreakRef.current += 1
       const message = language === 'zh' ? '摄像头抓拍分析失败。' : 'Camera capture analysis failed.'
       setState((previous) => ({
         ...previous,
         status: 'error',
-        result: null,
         errorMessage: message,
+        activeStep: null,
       }))
     } finally {
       monitorRunningRef.current = false
@@ -172,9 +248,6 @@ export function useAuditAnalysis() {
       return
     }
 
-    // Skip scheduling another tick if a previous capture is still in flight;
-    // the finally path of submitCameraCapture + scheduleNextMonitorTick keeps
-    // the loop alive without stacking overlapping work.
     if (monitorRunningRef.current) {
       scheduleNextMonitorTick()
       return
@@ -182,8 +255,6 @@ export function useAuditAnalysis() {
 
     await submitCameraCapture(params.camera, params.model, params.language)
 
-    // Only reschedule when monitoring is still active (stop may have been
-    // called during the await).
     if (monitorParamsRef.current) {
       scheduleNextMonitorTick()
     }

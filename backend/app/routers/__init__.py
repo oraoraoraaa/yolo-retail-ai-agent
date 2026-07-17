@@ -6,6 +6,7 @@ from app.routers.chat import router as chat_router
 from app.routers.database import router as database_router
 from app.routers.media import router as media_router
 from app.routers.planogram import router as planogram_router
+from app.routers.tickets import router as tickets_router
 
 __all__ = [
     "audit_router",
@@ -14,4 +15,5 @@ __all__ = [
     "database_router",
     "media_router",
     "planogram_router",
+    "tickets_router",
 ]

@@ -6,7 +6,8 @@ agent narrative: ``{ suggestedAction, explanation }``.
 
 ``POST /api/v1/audit/analyze-detections`` accepts precomputed local vision JSON
 (also produced by model-local) and returns the same narrative shape. Audits are
-persisted with optional image refs + detection JSON.
+persisted with optional image refs + detection JSON, and optionally run the
+closed-loop Detect → Decide → Dispatch pipeline to open action tickets.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from app.config import get_settings
 from app.schemas.audit import AuditAnalysisResult, DetectionAgentRequest
 from app.services import get_agent, get_detector, get_store
 from app.services.auth import AuthUser, get_current_user
+from app.services.closed_loop import get_closed_loop_agent
 from app.services.media import decode_image_payload
 
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
@@ -43,6 +45,38 @@ def _gap_count(vision: dict[str, Any] | None) -> int:
             if isinstance(item, dict) and str(item.get("label", "")).lower() == "gap"
         )
     return 0
+
+
+async def _run_closed_loop_safe(
+    *,
+    vision: dict[str, Any],
+    planogram: dict[str, Any] | None,
+    language: str,
+    source_label: str | None,
+    audit_record_id: str | None,
+    dispatch: bool = True,
+) -> tuple[list[str], str | None]:
+    """Best-effort closed loop; never fails the audit response."""
+    try:
+        result = await get_closed_loop_agent().run(
+            vision,
+            planogram,
+            language=language,
+            source_label=source_label,
+            audit_record_id=audit_record_id,
+            dispatch=dispatch,
+            dedupe=True,
+        )
+        ids = [t.id for t in result.tickets_created] + [t.id for t in result.tickets_updated]
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for ticket_id in ids:
+            if ticket_id not in seen:
+                seen.add(ticket_id)
+                ordered.append(ticket_id)
+        return ordered, result.narrative
+    except Exception:  # pragma: no cover - defensive
+        return [], None
 
 
 @router.post("/analyze", response_model=AuditAnalysisResult)
@@ -86,6 +120,8 @@ async def analyze_shelf_image(
         suggested_action, explanation = await agent.summarize_audit(detection)
 
     record_id: str | None = None
+    ticket_ids: list[str] = []
+    closed_loop_narrative: str | None = None
     if detection.available:
         record = get_store().add(
             "audit",
@@ -100,11 +136,21 @@ async def analyze_shelf_image(
             },
         )
         record_id = record.id
+        if detection.vision_model_response is not None:
+            ticket_ids, closed_loop_narrative = await _run_closed_loop_safe(
+                vision=detection.vision_model_response,
+                planogram=None,
+                language="en",
+                source_label=image.filename,
+                audit_record_id=record_id,
+            )
 
     return AuditAnalysisResult(
         suggested_action=suggested_action,
         explanation=explanation,
         record_id=record_id,
+        ticket_ids=ticket_ids,
+        closed_loop_narrative=closed_loop_narrative,
     )
 
 
@@ -165,8 +211,18 @@ async def analyze_detection_json(
         },
     )
 
+    ticket_ids, closed_loop_narrative = await _run_closed_loop_safe(
+        vision=payload.vision_model_response,
+        planogram=payload.planogram_response,
+        language=payload.language,
+        source_label=payload.source_label,
+        audit_record_id=record.id,
+    )
+
     return AuditAnalysisResult(
         suggested_action=suggested_action,
         explanation=explanation,
         record_id=record.id,
+        ticket_ids=ticket_ids,
+        closed_loop_narrative=closed_loop_narrative,
     )
