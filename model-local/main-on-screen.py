@@ -16,7 +16,7 @@ DEFAULT_WEIGHTS = (
     Path(__file__).resolve().parent.parent
     / "train"
     / "export"
-    / "goods-and-gaps-chinese-2-yolo11n.onnx"
+    / "gap-product-chinese-yolo11n.onnx"
 )
 
 

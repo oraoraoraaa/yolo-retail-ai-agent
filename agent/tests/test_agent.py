@@ -22,7 +22,7 @@ def _clean_singletons(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("LOCAL_VISION_BASE_URL", "http://vision.test")
     monkeypatch.setenv(
         "LOCAL_VISION_MODEL",
-        "train/export/goods-and-gaps-chinese-2-yolo11n.onnx",
+        "train/export/gap-product-chinese-yolo11n.onnx",
     )
     reset_settings()
     reset_detector()

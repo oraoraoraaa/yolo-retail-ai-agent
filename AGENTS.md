@@ -64,7 +64,7 @@ Browser UI  (:5173)
 | 8000 | `agent` (FastAPI) | LLM chat, audit narratives, planograms, in-memory records |
 | 8001 | `model-local` (`stream_server.py`) | **Only** vision inference path |
 
-**Default weights:** `train/export/goods-and-gaps-chinese-2-yolo11n.onnx`
+**Default weights:** `train/export/gap-product-chinese-yolo11n.onnx`
 
 ### Hard rules for agents
 
@@ -165,7 +165,7 @@ cd train && uv sync
 # default --model is yolo11m.pt (recommended for merged-gap-product)
 uv run python train.py --dataset-dir ../dataset/merged-gap-product --balance-gaps --device 0
 uv run python eval_report.py --dataset-dir ../dataset/merged-gap-product --weights artifacts/merged-gap-product/train/weights/best.pt
-uv run python merge_datasets.py build --teacher-weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt
+uv run python merge_datasets.py build --teacher-weights artifacts/gap-product-chinese-2/train/weights/best.pt
 uv run python export.py --weights artifacts/<name>/train/weights/best.pt --format onnx
 ```
 

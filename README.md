@@ -24,7 +24,7 @@ frontend (:5173)
   └─ chat / agent     ──► agent (:8000) ──► model-local for image audits
 ```
 
-Default weights: `train/export/goods-and-gaps-chinese-2-yolo11n.onnx`
+Default weights: `train/export/gap-product-chinese-yolo11n.onnx`
 
 ## Dependency management
 

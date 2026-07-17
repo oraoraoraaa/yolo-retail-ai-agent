@@ -2,7 +2,7 @@
 
 Problem
 -------
-``goods-and-gaps-chinese-2`` is fully labeled (gap + product) but tiny
+``gap-product-chinese-2`` is fully labeled (gap + product) but tiny
 (~122 images). ``sku-gap-700img-1`` is ~700 images with **gap-only** labels —
 training on it alone teaches the model the gap class but never the product
 class, so it cannot draw the product/gap boundary the agent needs.
@@ -456,7 +456,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Pseudo-label products on gap-only shelves and/or merge with the "
-            "fully labeled goods-and-gaps set for two-class YOLO training."
+            "fully labeled gap-product set for two-class YOLO training."
         )
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -475,7 +475,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--teacher-weights",
         type=Path,
         required=True,
-        help="Two-class detector weights (gap+product), e.g. best.pt from goods-and-gaps.",
+        help="Two-class detector weights (gap+product), e.g. best.pt from gap-product.",
     )
     p_pseudo.add_argument(
         "--output-dir",
@@ -505,7 +505,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(__file__).resolve().parent.parent
         / "dataset"
-        / "goods-and-gaps-chinese-2",
+        / "gap-product-chinese-2",
     )
     p_merge.add_argument(
         "--pseudo-gap-dir",
@@ -544,7 +544,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(__file__).resolve().parent.parent
         / "dataset"
-        / "goods-and-gaps-chinese-2",
+        / "gap-product-chinese-2",
     )
     p_all.add_argument(
         "--teacher-weights",

@@ -14,7 +14,7 @@ artifacts directory, leaving the source dataset unchanged.
 
 | Dataset | Images | Labels | Notes |
 | --- | --- | --- | --- |
-| `goods-and-gaps-chinese-2` | ~122 | gap + product | Fully labeled seed set (tiny) |
+| `gap-product-chinese-2` | ~122 | gap + product | Fully labeled seed set (tiny) |
 | `sku-gap-700img-1` | ~724 | **gap only** | Large; needs product pseudo-labels before two-class training |
 | `merged-gap-product` | ~800+ | gap + product | Built by `merge_datasets.py` (recommended train root) |
 
@@ -27,7 +27,7 @@ uv sync
 
 ## Class imbalance (gap rare vs product)
 
-On `goods-and-gaps-chinese-2` train split the raw counts are roughly:
+On `gap-product-chinese-2` train split the raw counts are roughly:
 
 * gap ≈ 141 boxes
 * product ≈ 5856 boxes
@@ -69,7 +69,7 @@ report Markdown file.
 `sku-gap-700img-1` has ~700 images with **gap-only** annotations. To use it for
 two-class training without hand-labeling every product:
 
-1. Train (or reuse) a **teacher** on `goods-and-gaps-chinese-2` (gap+product).
+1. Train (or reuse) a **teacher** on `gap-product-chinese-2` (gap+product).
 2. Run the teacher on every gap-only image; keep high-confidence **product**
    boxes that do not heavily overlap human gap labels.
 3. Write two-class labels: human gaps (class 0) + pseudo products (class 1).
@@ -84,9 +84,9 @@ Human gap labels are never overwritten. Sidecar
 ```bash
 cd train
 uv run python merge_datasets.py build \
-  --teacher-weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --teacher-weights artifacts/gap-product-chinese-2/train/weights/best.pt \
   --gap-dataset-dir ../dataset/sku-gap-700img-1 \
-  --fully-labeled-dir ../dataset/goods-and-gaps-chinese-2 \
+  --fully-labeled-dir ../dataset/gap-product-chinese-2 \
   --pseudo-output-dir ../dataset/sku-gap-700img-1-with-products \
   --merged-output-dir ../dataset/merged-gap-product \
   --conf 0.35 \
@@ -99,13 +99,13 @@ uv run python merge_datasets.py build \
 # 1) Pseudo-label products onto the gap-only set
 uv run python merge_datasets.py pseudo-label \
   --gap-dataset-dir ../dataset/sku-gap-700img-1 \
-  --teacher-weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --teacher-weights artifacts/gap-product-chinese-2/train/weights/best.pt \
   --output-dir ../dataset/sku-gap-700img-1-with-products \
   --conf 0.35
 
 # 2) Merge fully labeled + pseudo-labeled
 uv run python merge_datasets.py merge \
-  --fully-labeled-dir ../dataset/goods-and-gaps-chinese-2 \
+  --fully-labeled-dir ../dataset/gap-product-chinese-2 \
   --pseudo-gap-dir ../dataset/sku-gap-700img-1-with-products \
   --output-dir ../dataset/merged-gap-product
 ```
@@ -157,7 +157,7 @@ Smaller baseline / smoke example:
 
 ```bash
 uv run python train.py \
-  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
+  --dataset-dir ../dataset/gap-product-chinese-2 \
   --model yolo11n.pt \
   --epochs 5 \
   --imgsz 640 \
@@ -178,9 +178,9 @@ Useful imbalance flags (defaults favor gap recall):
 
 ```bash
 uv run python validate.py \
-  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
+  --dataset-dir ../dataset/gap-product-chinese-2 \
   --data data.yaml \
-  --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --weights artifacts/gap-product-chinese-2/train/weights/best.pt \
   --split val
 ```
 
@@ -192,8 +192,8 @@ an acceptable precision.
 
 ```bash
 uv run python eval_report.py \
-  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
-  --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --dataset-dir ../dataset/gap-product-chinese-2 \
+  --weights artifacts/gap-product-chinese-2/train/weights/best.pt \
   --split val \
   --device 0
 ```
@@ -224,47 +224,33 @@ Suggested runtime defaults for shelf audits: use the report’s
 
 ```bash
 uv run python predict.py \
-  --dataset-dir ../dataset/goods-and-gaps-chinese-2 \
+  --dataset-dir ../dataset/gap-product-chinese-2 \
   --data data.yaml \
-  --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
-  --source ../dataset/goods-and-gaps-chinese-2/valid/images
+  --weights artifacts/gap-product-chinese-2/train/weights/best.pt \
+  --source ../dataset/gap-product-chinese-2/valid/images
 ```
 
 ## Export
 
 ```bash
 uv run python export.py \
-  --weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --weights artifacts/gap-product-chinese-2/train/weights/best.pt \
   --format onnx
 ```
 
-## Runtime weights used by the app
-
-```text
-train/export/goods-and-gaps-chinese-2-yolo11n.onnx
-```
-
-Loaded by [`model-local/stream_server.py`](../model-local/stream_server.py).
-The agent does **not** run YOLO itself.
-
-## Trained Data
-
-If local training is impractical, download pre-trained runs (Google Drive):
-
-### sku-gap-700img-1
-
-- [20260714024207-yolov8m](https://drive.google.com/drive/folders/1AMQq7KjH9x6AUVZdDsB0YwjcriO1Q9QP?usp=sharing)
+## Exported Weight Files
 
 ```text
 train/
-├── artifacts/
+├── artifacts/ (git ignored)
 │   └── <dataset-name>/
 │       └── train/
 │           └── weights/
 │               ├── best.pt
 │               └── last.pt
 └── export/
-    └── goods-and-gaps-chinese-2-yolo11n.onnx
+    ├── gap-product-chinese-yolo11n.onnx
+    └── merged-gap-product.onnx
 ```
 
 ## Tests

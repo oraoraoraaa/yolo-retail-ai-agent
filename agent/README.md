@@ -55,7 +55,7 @@ uv run uvicorn app.main:app --reload --port 8000
 
 ### Local weights
 
-Default: `train/export/goods-and-gaps-chinese-2-yolo11n.onnx`  
+Default: `train/export/gap-product-chinese-yolo11n.onnx`  
 Override with `LOCAL_VISION_MODEL` / `LOCAL_VISION_BASE_URL` in `.env`.
 
 ## Connect the frontend

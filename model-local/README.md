@@ -12,7 +12,7 @@ Local ONNX/YOLO weight files only — the sole runtime vision backend for the ap
 uv sync
 ```
 
-Default weights: `../train/export/goods-and-gaps-chinese-2-yolo11n.onnx`
+Default weights: `../train/export/gap-product-chinese-yolo11n.onnx`
 
 ## Run
 
@@ -24,7 +24,7 @@ uv run stream_server.py
 On-screen test:
 
 ```bash
-uv run main-on-screen.py --weights ../train/export/goods-and-gaps-chinese-2-yolo11n.onnx
+uv run main-on-screen.py --weights ../train/export/gap-product-chinese-yolo11n.onnx
 # or defaults:
 uv run main-on-screen.py --camera 0
 ```

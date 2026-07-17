@@ -97,7 +97,7 @@ Directly use a dataset with gaps labeled. The dataset can be downloaded using th
 YOLO on it alone never learns `product`. Use the teacher → pseudo-label → merge
 pipeline in [`train/merge_datasets.py`](../train/merge_datasets.py):
 
-1. Teacher: detector trained on `goods-and-gaps-chinese-2` (gap + product).
+1. Teacher: detector trained on `gap-product-chinese-2` (gap + product).
 2. Pseudo-label: run teacher on every `sku-gap-700img-1` image; keep high-conf
    product boxes that do not overlap human gaps; keep human gap boxes as-is.
 3. Merge into `dataset/merged-gap-product` and train with existing `train.py`.
@@ -108,7 +108,7 @@ recommended conf thresholds) are documented in [`train/README.md`](../train/READ
 ```bash
 cd train
 uv run python merge_datasets.py build \
-  --teacher-weights artifacts/goods-and-gaps-chinese-2/train/weights/best.pt \
+  --teacher-weights artifacts/gap-product-chinese-2/train/weights/best.pt \
   --device 0
 # default --model is yolo11m.pt (recommended for the enlarged merged set)
 uv run python train.py --dataset-dir ../dataset/merged-gap-product --balance-gaps --device 0
@@ -131,7 +131,7 @@ uv run python export.py --weights artifacts/<dataset>/train/weights/best.pt --fo
 Exported local weights used by the app are stored under:
 
 ```text
-train/export/goods-and-gaps-chinese-2-yolo11n.onnx
+train/export/gap-product-chinese-yolo11n.onnx
 ```
 
 **All runtime vision requests** (camera stream, image audit, agent image analysis)

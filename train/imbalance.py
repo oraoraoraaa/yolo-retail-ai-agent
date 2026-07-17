@@ -1,7 +1,7 @@
 """Class-imbalance helpers for gap vs product shelf detection.
 
 On shelf images, products dominate and gaps are rare. Example from
-``goods-and-gaps-chinese-2`` (train split, raw labels):
+``gap-product-chinese-2`` (train split, raw labels):
 
 * gap (class 0): ~141 boxes
 * product (class 1): ~5856 boxes
