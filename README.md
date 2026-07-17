@@ -54,10 +54,6 @@ npm run dev
 Open `http://localhost:5173`. When `AUTH_ENABLED=true` on the backend, the UI
 shows a login screen (default bootstrap user `admin` / `admin`).
 
-## Frontend
-
-See [frontend/README.md](frontend/README.md).
-
 ## Develop
 
 > Contents below are for developers only. Read them carefully before you do the actual work and make a git push.
@@ -66,7 +62,7 @@ See [frontend/README.md](frontend/README.md).
 
 - [DEVELOPING RULES](./doc/developing_rules.md)
 
-## Architecture
+## Frontend Architecture
 
 All vision inference uses **local weight files** via `model-local/`:
 
@@ -99,8 +95,9 @@ Frontend remains **npm** (`frontend/`).
 
 - Training: [train/README.md](train/README.md) — `cd train && uv sync && uv run python train.py …`
 - Dataset download (Roboflow API key for **download only**):
-  - [sku-1kimg-yolov8.py](dataset/sku-1kimg-yolov8.py)
   - [sku-gap-700img-yolov8.py](dataset/sku-gap-700img-yolov8.py)
+  - [gap-product-chinese-yolov8.py](dataset/gap-product-chinese-yolov8.py)
+  - [gap-product-yolov8.py](dataset/gap-product-yolov8.py)
 
   ```bash
   cd dataset && uv sync && uv run python sku-gap-700img-yolov8.py
