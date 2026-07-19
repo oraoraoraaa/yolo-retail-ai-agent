@@ -113,6 +113,36 @@ def test_probe_camera_index_false_when_closed() -> None:
         assert detection.probe_camera_index(0) is False
 
 
+def test_camera_display_name_reads_v4l2_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(detection.sys, "platform", "linux")
+    name_file = tmp_path / "video0" / "name"
+    name_file.parent.mkdir(parents=True)
+    name_file.write_text("Integrated Camera\n", encoding="utf-8")
+
+    real_path = detection.Path
+
+    def fake_path(value: str) -> Path:
+        if value == "/sys/class/video4linux/video0/name":
+            return name_file
+        return real_path(value)
+
+    monkeypatch.setattr(detection, "Path", fake_path)
+    assert detection.camera_display_name(0) == "Integrated Camera"
+
+
+def test_camera_display_name_none_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(detection.sys, "platform", "linux")
+    monkeypatch.setattr(detection, "Path", lambda value: Path("/nonexistent/path/xyz"))
+    assert detection.camera_display_name(99) is None
+
+
+def test_camera_display_name_none_on_non_linux(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(detection.sys, "platform", "darwin")
+    assert detection.camera_display_name(0) is None
+
+
 def test_get_detection_names_from_dict() -> None:
     model = MagicMock()
     model.names = {0: "product", 1: "gap"}

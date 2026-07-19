@@ -7,6 +7,8 @@ const DETECT_PATH = '/api/v1/detect'
 export interface StreamCamera {
   id: string
   label: string
+  /** Human-readable device name (e.g. "Integrated Camera") when resolvable. */
+  name?: string
 }
 
 export interface StreamCamerasResponse {
@@ -66,8 +68,16 @@ export interface StreamStatusResponse {
   hasFrame: boolean
 }
 
-export function getStreamVideoUrl(): string {
-  return `${STREAM_BASE_URL}${STREAM_PATH}/video`
+export interface StreamStatusesResponse {
+  cameras: StreamStatusResponse[]
+}
+
+export function getStreamVideoUrl(camera?: string): string {
+  const base = `${STREAM_BASE_URL}${STREAM_PATH}/video`
+  if (camera == null || camera === '') {
+    return base
+  }
+  return `${base}?camera=${encodeURIComponent(camera)}`
 }
 
 async function streamFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -121,21 +131,28 @@ export async function listStreamModels(): Promise<StreamModelsResponse> {
   return streamFetch<StreamModelsResponse>('/models')
 }
 
-export async function getStreamStatus(): Promise<StreamStatusResponse> {
-  return streamFetch<StreamStatusResponse>('/status')
+export async function getStreamStatus(camera?: string): Promise<StreamStatusResponse> {
+  const query = camera == null || camera === '' ? '' : `?camera=${encodeURIComponent(camera)}`
+  return streamFetch<StreamStatusResponse>(`/status${query}`)
 }
 
-export async function startStream(camera: string): Promise<StreamStatusResponse> {
+/** Fetch the status of every camera the stream service is currently running. */
+export async function getStreamStatuses(): Promise<StreamStatusesResponse> {
+  return streamFetch<StreamStatusesResponse>('/statuses')
+}
+
+export async function startStream(camera: string, model?: string): Promise<StreamStatusResponse> {
   return streamFetch<StreamStatusResponse>('/start', {
     method: 'POST',
-    body: JSON.stringify({ camera }),
+    body: JSON.stringify(model ? { camera, model } : { camera }),
   })
 }
 
-export async function stopStream(): Promise<StreamStatusResponse> {
-  return streamFetch<StreamStatusResponse>('/stop', {
+/** Stop a single camera when provided, or all cameras when omitted. */
+export async function stopStream(camera?: string): Promise<unknown> {
+  return streamFetch<unknown>('/stop', {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify(camera == null || camera === '' ? {} : { camera }),
   })
 }
 

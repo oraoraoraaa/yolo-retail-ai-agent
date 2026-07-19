@@ -1,11 +1,10 @@
 # Frontend — YOLO Retail Agent
 
-React + TypeScript + Vite workspace UI for live shelf streaming, shelf image audit, agent chat, and database browsing.
+React + TypeScript + Vite workspace UI for shelf image audit (with integrated live streaming), agent chat, and database browsing.
 
 ## Features
 
-- **Camera Stream:** select a local camera from `model-local/stream_server.py` and view live YOLO bounding boxes (local weight files).
-- **Shelf Audit:** upload a local shelf image or run low-frequency camera monitoring; send detector JSON to the agent and display the suggested action and explanation. Audits are persisted with image refs + detection JSON.
+- **Shelf Audit:** each available camera is a **block** showing its latest capture as the cover, a status label (auditing / not auditing), and quick controls to start/stop auditing, assign a planogram, and set the interval. **Refresh cameras** re-probes devices (camera names come from the device, e.g. "Integrated Camera"). Click a block to open that camera's **live YOLO stream** (via `model-local/stream_server.py`, local weight files) with full controls, image upload, and analysis. Auditing runs as per-camera background monitoring that keeps going when you open another camera or leave the page. Audits are persisted with image refs + detection JSON.
 - **Planogram:** draw freehand facing regions and mark one planogram active for audits.
 - **Agent Chat:** chat with the retail agent; assistant replies render as Markdown (bold, lists, headings, code, tables via GFM).
 - **Database:** browse durable SQL records; open an audit to view image + detection JSON.
@@ -17,7 +16,7 @@ React + TypeScript + Vite workspace UI for live shelf streaming, shelf image aud
 ```text
 src/
   api/           HTTP client + endpoint modules (stubs when offline)
-  components/    layout, auth login, audit, chat, database, planogram, stream
+  components/    layout, auth login, audit (with live stream), chat, database, planogram
   hooks/         auth + audit + chat state orchestration
   lib/           i18n + small utilities
   styles/        design tokens + global styles

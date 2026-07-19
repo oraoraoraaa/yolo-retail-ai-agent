@@ -33,13 +33,418 @@
 
 .controlPanel {
   display: grid;
-  grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) minmax(7rem, 0.8fr) auto;
+  grid-template-columns: minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) minmax(7rem, 0.8fr) auto;
   gap: var(--space-3);
   align-items: end;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   background: var(--color-surface-strong);
+}
+
+.headerRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.headerControls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.viewToggle {
+  display: inline-flex;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  padding: 0.15rem;
+  background: var(--color-surface);
+}
+
+.viewToggleButton {
+  padding: 0.3rem 0.75rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.viewToggleActive {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.backButton {
+  align-self: flex-start;
+  margin-bottom: var(--space-2);
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.backButton:hover {
+  background: rgba(20, 32, 40, 0.04);
+}
+
+.blockGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--space-3);
+}
+
+.cameraBlock {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface-strong);
+}
+
+.blockCover {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  background: #0f171c;
+}
+
+.blockCoverImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #0f171c;
+}
+
+.blockCoverEmpty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.blockStatus {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 28, 0.72);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.blockStatusActive {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.blockBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.blockNameRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.blockName {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blockId {
+  flex-shrink: 0;
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+
+.blockField {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--color-ink-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.blockSelect {
+  width: 100%;
+  min-height: 2.25rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.55rem;
+  background: #fff;
+  color: var(--color-ink);
+}
+
+.blockActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.blockActions > button {
+  flex: 1;
+}
+
+.cameraPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--color-surface-strong);
+}
+
+.pickerLabel {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.cameraChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cameraChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: 0.4rem 0.85rem;
+  border: 1.5px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  cursor: pointer;
+  font-weight: 600;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.cameraChip:hover {
+  border-color: rgba(11, 122, 110, 0.4);
+}
+
+.cameraChipActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
+}
+
+.cameraChipName {
+  font-size: 0.9rem;
+}
+
+.selectPrompt {
+  display: grid;
+  place-items: center;
+  gap: var(--space-2);
+  min-height: 14rem;
+  border: 1.5px dashed var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  text-align: center;
+  background: var(--color-surface-strong);
+}
+
+.selectPromptTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.selectPromptCopy {
+  margin: 0;
+  max-width: 32rem;
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+}
+
+.monitorBadge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.streamDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--color-ink-soft);
+}
+
+.streamDotLive {
+  background: var(--color-accent);
+}
+
+.activeCamera {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--color-surface-strong);
+}
+
+.activeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.activeCameraTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.activeCameraHint {
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.86rem;
+}
+
+.streamBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0 0.7rem;
+  background: var(--color-surface);
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.streamBadgeLive {
+  border-color: rgba(11, 122, 110, 0.28);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.activeViewer {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 22rem;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #0f171c;
+}
+
+.activeImage {
+  width: 100%;
+  max-height: 30rem;
+  object-fit: contain;
+  background: #0f171c;
+}
+
+.activePlaceholder {
+  max-width: 28rem;
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.activePlaceholderTitle {
+  margin: 0 0 var(--space-2);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.activePlaceholderCopy {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.9rem;
+}
+
+.viewerOverlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--space-3);
+  background: rgba(15, 23, 28, 0.72);
+  color: #fff;
+  font-weight: 700;
+}
+
+.spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0 auto;
+  border: 3px solid rgba(255, 255, 255, 0.24);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: auditSpin 850ms linear infinite;
+}
+
+.previewMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+@keyframes auditSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .field {

@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 
 import {
   listPlanograms,
   listStreamCameras,
   listStreamModels,
-  setActivePlanogram,
   type StreamCamera,
   type StreamModel,
 } from '@/api'
+import { useCameraStreams } from '@/hooks/useCameraStreams'
+import type { MonitorSettings } from '@/hooks/useAuditAnalysis'
 import type { Language, UI_TEXT } from '@/lib/i18n'
 import type { AuditPanelState, AuditPipelineStep } from '@/types'
 import type { Planogram } from '@/types/planogram'
@@ -16,17 +17,42 @@ import styles from './ImageUploadPanel.module.css'
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const STEP_ORDER: AuditPipelineStep[] = ['vision', 'planogram', 'agent', 'tickets', 'done']
+const INTERVAL_VALUES = [60_000, 120_000, 300_000, 600_000]
+
+/** Per-camera UI config the operator can tune independently. */
+interface CameraConfig {
+  model: string
+  intervalMs: number
+  planogramId: string
+}
+
+interface AuditController {
+  getState: (camera: string) => AuditPanelState
+  isMonitoring: (camera: string) => boolean
+  getMonitorSettings: (camera: string) => MonitorSettings | null
+  selectImage: (camera: string, file: File) => void
+  submitImage: (camera: string, model: string, language: Language, planogramId?: string | null) => Promise<void>
+  submitCameraCapture: (
+    camera: string,
+    model: string,
+    language: Language,
+    planogramId?: string | null,
+  ) => Promise<void>
+  startMonitoring: (
+    camera: string,
+    model: string,
+    intervalMs: number,
+    language: Language,
+    planogramId?: string | null,
+  ) => void
+  stopMonitoring: (camera: string) => void
+  clearAudit: (camera: string) => void
+}
 
 interface ImageUploadPanelProps {
   text: (typeof UI_TEXT)[Language]['audit']
-  state: AuditPanelState
-  isMonitoring: boolean
-  onSelectImage: (file: File) => void
-  onStartInference: (model: string) => Promise<void>
-  onAnalyzeCameraCapture: (camera: string, model: string) => Promise<void>
-  onStartMonitoring: (camera: string, model: string, intervalMs: number) => void
-  onStopMonitoring: () => void
-  onClear: () => void
+  language: Language
+  audit: AuditController
 }
 
 function isAcceptedImage(file: File): boolean {
@@ -45,30 +71,351 @@ function stepStatusLabel(text: ImageUploadPanelProps['text'], status: string): s
   return text.stepPending
 }
 
-export function ImageUploadPanel({
-  text,
-  state,
-  isMonitoring,
-  onSelectImage,
-  onStartInference,
-  onAnalyzeCameraCapture,
-  onStartMonitoring,
-  onStopMonitoring,
-  onClear,
-}: ImageUploadPanelProps) {
+export function ImageUploadPanel({ text, language, audit }: ImageUploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [cameras, setCameras] = useState<StreamCamera[]>([])
   const [models, setModels] = useState<StreamModel[]>([])
   const [planograms, setPlanograms] = useState<Planogram[]>([])
-  const [selectedCamera, setSelectedCamera] = useState('0')
-  const [selectedModel, setSelectedModel] = useState('')
-  const [selectedPlanogramId, setSelectedPlanogramId] = useState('')
-  const [intervalMs, setIntervalMs] = useState(60_000)
-  const [planogramLoading, setPlanogramLoading] = useState(true)
+  // '' = camera grid view; a camera id = streaming detail view for that camera.
+  const [openedCamera, setOpenedCamera] = useState('')
+  // Detail-view viewer mode: 'stream' shows the live MJPEG feed; 'capture'
+  // shows the latest analyzed still (upload preview or manual "Analyze now"
+  // result). Defaults to 'stream' when opening a camera so an already-audited
+  // camera still opens its live stream instead of freezing on its last capture.
+  const [viewMode, setViewMode] = useState<'stream' | 'capture'>('stream')
+  const [configs, setConfigs] = useState<Record<string, CameraConfig>>({})
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [defaultModel, setDefaultModel] = useState('')
 
+  const streams = useCameraStreams()
+  // Track which camera is currently streaming so switching cameras (or leaving
+  // the panel) tears down only that live stream — never the background audits.
+  const streamingCameraRef = useRef('')
+
+  function configFor(camera: string): CameraConfig {
+    return configs[camera] ?? { model: defaultModel, intervalMs: 60_000, planogramId: '' }
+  }
+
+  const loadControls = useCallback(
+    async (signal?: { cancelled: boolean }): Promise<void> => {
+      const [cameraResponse, modelResponse, planogramResponse] = await Promise.all([
+        listStreamCameras(),
+        listStreamModels(),
+        listPlanograms(),
+      ])
+      if (signal?.cancelled) {
+        return
+      }
+
+      const model = modelResponse.defaultModel || modelResponse.models[0]?.id || ''
+      const activePlanogram = planogramResponse.activePlanogramId || planogramResponse.planograms[0]?.id || ''
+      setCameras(cameraResponse.cameras)
+      setModels(modelResponse.models)
+      setDefaultModel(model)
+      setPlanograms(planogramResponse.planograms)
+
+      setConfigs((current) => {
+        const next = { ...current }
+        for (const camera of cameraResponse.cameras) {
+          if (!next[camera.id]) {
+            next[camera.id] = { model, intervalMs: 60_000, planogramId: activePlanogram }
+          }
+        }
+        return next
+      })
+    },
+    [],
+  )
+
+  useEffect(() => {
+    const signal = { cancelled: false }
+    void loadControls(signal)
+      .catch((error) => {
+        if (!signal.cancelled) {
+          setLocalError(error instanceof Error ? error.message : text.controlsError)
+        }
+      })
+      .finally(() => {
+        if (!signal.cancelled) {
+          setLoading(false)
+        }
+      })
+    return () => {
+      signal.cancelled = true
+    }
+  }, [loadControls, text.controlsError])
+
+  async function refreshCameras(): Promise<void> {
+    setRefreshing(true)
+    setLocalError(null)
+    try {
+      await loadControls()
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : text.controlsError)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const cameraList = useMemo(() => cameras, [cameras])
+
+  // When the panel unmounts (operator leaves the audit page), stop the live
+  // stream of the currently viewed camera. Background monitoring lives in the
+  // App-level audit hook, so saved cameras keep auditing after we leave.
+  useEffect(() => {
+    return () => {
+      const streaming = streamingCameraRef.current
+      if (streaming) {
+        void streams.stopCameraStream(streaming)
+        streamingCameraRef.current = ''
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function openCamera(cameraId: string): void {
+    setOpenedCamera(cameraId)
+    // Always open on the live stream, even if this camera already has a stored
+    // capture from background auditing.
+    setViewMode('stream')
+    streamingCameraRef.current = cameraId
+    const model = configFor(cameraId).model || defaultModel || undefined
+    void streams.startCameraStream(cameraId, model)
+  }
+
+  function closeCamera(): void {
+    const streaming = streamingCameraRef.current
+    if (streaming) {
+      void streams.stopCameraStream(streaming)
+      streamingCameraRef.current = ''
+    }
+    setOpenedCamera('')
+  }
+
+  function updateConfig(camera: string, patch: Partial<CameraConfig>): void {
+    setConfigs((current) => {
+      const base = current[camera] ?? { model: defaultModel, intervalMs: 60_000, planogramId: '' }
+      return { ...current, [camera]: { ...base, ...patch } }
+    })
+
+    // If we change the model of the camera we're viewing live, restart its
+    // stream so the overlay reflects the new weights immediately.
+    if (patch.model && streamingCameraRef.current === camera) {
+      void streams.stopCameraStream(camera).then(() => {
+        streamingCameraRef.current = camera
+        void streams.startCameraStream(camera, patch.model)
+      })
+    }
+
+    // If the camera is already auditing in the background, re-save so the new
+    // planogram / interval / model take effect on the next tick.
+    if (audit.isMonitoring(camera)) {
+      const nextConfig = { ...configFor(camera), ...patch }
+      audit.startMonitoring(
+        camera,
+        nextConfig.model,
+        nextConfig.intervalMs,
+        language,
+        nextConfig.planogramId || null,
+      )
+    }
+  }
+
+  function toggleAuditing(camera: string): void {
+    if (audit.isMonitoring(camera)) {
+      audit.stopMonitoring(camera)
+      return
+    }
+    const config = configFor(camera)
+    if (!config.model) {
+      return
+    }
+    audit.startMonitoring(camera, config.model, config.intervalMs, language, config.planogramId || null)
+  }
+
+  function handleFile(file: File | undefined): void {
+    if (!file || !openedCamera) {
+      return
+    }
+    if (!isAcceptedImage(file)) {
+      setLocalError(text.invalidImage)
+      return
+    }
+    setLocalError(null)
+    // Uploading a still switches the viewer to show that image.
+    setViewMode('capture')
+    audit.selectImage(openedCamera, file)
+  }
+
+  function onInputChange(event: ChangeEvent<HTMLInputElement>): void {
+    handleFile(event.target.files?.[0])
+    event.target.value = ''
+  }
+
+  function onDrop(event: DragEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    setIsDragging(false)
+    handleFile(event.dataTransfer.files?.[0])
+  }
+
+  function streamStatusLabel(camera: string): string {
+    const status = streams.getStreamState(camera).status
+    if (status === 'live') return text.streamLive
+    if (status === 'starting') return text.streamStarting
+    if (status === 'error') return text.streamError
+    return text.streamIdle
+  }
+
+  function cameraLabel(cameraId: string): string {
+    const camera = cameraList.find((item) => item.id === cameraId)
+    return camera?.label ?? (cameraId ? `${text.cameraFallback} ${cameraId}` : '')
+  }
+
+  function planogramName(planogramId: string): string {
+    return planograms.find((item) => item.id === planogramId)?.name ?? text.planogramNone
+  }
+
+  // ----- Camera grid (default view) ---------------------------------------
+  if (!openedCamera) {
+    return (
+      <section className={styles.panel} aria-labelledby="audit-panel-title">
+        <header className={styles.headerRow}>
+          <div className={styles.header}>
+            <h2 id="audit-panel-title" className={styles.title}>
+              {text.title}
+            </h2>
+            <p className={styles.subtitle}>{text.multiSubtitle}</p>
+          </div>
+          <button
+            type="button"
+            className={styles.ghostButton}
+            onClick={() => void refreshCameras()}
+            disabled={refreshing || loading}
+          >
+            {refreshing ? text.refreshing : text.refreshCameras}
+          </button>
+        </header>
+
+        {localError ? <p className={styles.errorLine}>{localError}</p> : null}
+
+        {loading ? (
+          <p className={styles.statusLine}>{text.controlsLoading}</p>
+        ) : cameraList.length === 0 ? (
+          <section className={styles.selectPrompt}>
+            <p className={styles.selectPromptTitle}>{text.noCameras}</p>
+            <p className={styles.selectPromptCopy}>{text.noCamerasCopy}</p>
+          </section>
+        ) : (
+          <div className={styles.blockGrid}>
+            {cameraList.map((camera) => {
+              const cameraState = audit.getState(camera.id)
+              const monitoring = audit.isMonitoring(camera.id)
+              const config = configFor(camera.id)
+              const cover = cameraState.previewUrl
+              return (
+                <article key={camera.id} className={styles.cameraBlock}>
+                  <button
+                    type="button"
+                    className={styles.blockCover}
+                    onClick={() => openCamera(camera.id)}
+                    aria-label={`${text.openStream}: ${camera.label}`}
+                  >
+                    {cover ? (
+                      <img className={styles.blockCoverImage} src={cover} alt={camera.label} />
+                    ) : (
+                      <div className={styles.blockCoverEmpty}>
+                        <span>{text.noCapture}</span>
+                      </div>
+                    )}
+                    <span
+                      className={`${styles.blockStatus} ${monitoring ? styles.blockStatusActive : ''}`}
+                    >
+                      <span className={styles.streamDot} />
+                      {monitoring ? text.statusAuditing : text.statusIdle}
+                    </span>
+                  </button>
+
+                  <div className={styles.blockBody}>
+                    <div className={styles.blockNameRow}>
+                      <span className={styles.blockName}>{camera.name ?? camera.label}</span>
+                      <span className={styles.blockId}>{`${text.cameraFallback} ${camera.id}`}</span>
+                    </div>
+
+                    <label className={styles.blockField}>
+                      <span>{text.planogram}</span>
+                      <select
+                        className={styles.blockSelect}
+                        value={config.planogramId}
+                        onChange={(event) => updateConfig(camera.id, { planogramId: event.target.value })}
+                      >
+                        <option value="">{text.planogramNone}</option>
+                        {planograms.map((planogram) => (
+                          <option key={planogram.id} value={planogram.id}>
+                            {planogram.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className={styles.blockField}>
+                      <span>{text.interval}</span>
+                      <select
+                        className={styles.blockSelect}
+                        value={config.intervalMs}
+                        onChange={(event) =>
+                          updateConfig(camera.id, { intervalMs: Number(event.target.value) })
+                        }
+                      >
+                        {text.intervalOptions.map((label, index) => (
+                          <option key={label} value={INTERVAL_VALUES[index]}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className={styles.blockActions}>
+                      <button
+                        type="button"
+                        className={monitoring ? styles.ghostButton : styles.primaryButton}
+                        onClick={() => toggleAuditing(camera.id)}
+                        disabled={!config.model}
+                      >
+                        {monitoring ? text.stopMonitor : text.startMonitoring}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.ghostButton}
+                        onClick={() => openCamera(camera.id)}
+                      >
+                        {text.openStream}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </section>
+    )
+  }
+
+  // ----- Streaming detail view (a camera is opened) -----------------------
+  const camera = openedCamera
+  const state = audit.getState(camera)
   const isBusy = state.status === 'analyzing' || state.status === 'uploading'
+  const monitoringActive = audit.isMonitoring(camera)
+  const streamState = streams.getStreamState(camera)
+  const activeConfig = configFor(camera)
+  // Only show the stored still when the operator is explicitly in capture mode
+  // and there is a capture to show. Otherwise the live stream is displayed —
+  // this is what lets an already-audited camera open its live feed.
+  const showCapture = viewMode === 'capture' && Boolean(state.previewUrl)
+
   const suggestedAction = state.result?.suggestedAction ?? ''
   const explanation = state.result?.explanation ?? ''
   const planogramMatch = state.result?.planogramResponse ?? null
@@ -85,120 +432,86 @@ export function ImageUploadPanel({
       ? text.progressCopy
       : text.progressTitle
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadControls(): Promise<void> {
-      try {
-        const [cameraResponse, modelResponse, planogramResponse] = await Promise.all([
-          listStreamCameras(),
-          listStreamModels(),
-          listPlanograms(),
-        ])
-        if (cancelled) {
-          return
-        }
-
-        setCameras(cameraResponse.cameras)
-        setSelectedCamera(cameraResponse.defaultCamera || cameraResponse.cameras[0]?.id || '0')
-        setModels(modelResponse.models)
-        setSelectedModel(modelResponse.defaultModel || modelResponse.models[0]?.id || '')
-        setPlanograms(planogramResponse.planograms)
-        setSelectedPlanogramId(planogramResponse.activePlanogramId || planogramResponse.planograms[0]?.id || '')
-      } catch (error) {
-        if (!cancelled) {
-          setLocalError(error instanceof Error ? error.message : text.controlsError)
-        }
-      } finally {
-        if (!cancelled) {
-          setPlanogramLoading(false)
-        }
-      }
-    }
-
-    void loadControls()
-
-    return () => {
-      cancelled = true
-    }
-  }, [text.controlsError])
-
-  async function onPlanogramChange(planogramId: string): Promise<void> {
-    setSelectedPlanogramId(planogramId)
-    if (!planogramId) {
-      return
-    }
-    try {
-      await setActivePlanogram(planogramId)
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : text.controlsError)
-    }
-  }
-
-  function handleFile(file: File | undefined): void {
-    if (!file) {
-      return
-    }
-
-    if (!isAcceptedImage(file)) {
-      setLocalError(text.invalidImage)
-      return
-    }
-
-    setLocalError(null)
-    onSelectImage(file)
-  }
-
-  function onInputChange(event: ChangeEvent<HTMLInputElement>): void {
-    const file = event.target.files?.[0]
-    handleFile(file)
-    event.target.value = ''
-  }
-
-  function onDrop(event: DragEvent<HTMLDivElement>): void {
-    event.preventDefault()
-    setIsDragging(false)
-    const file = event.dataTransfer.files?.[0]
-    handleFile(file)
-  }
-
   return (
     <section className={styles.panel} aria-labelledby="audit-panel-title">
-      <header className={styles.header}>
-        <h2 id="audit-panel-title" className={styles.title}>
-          {text.title}
-        </h2>
-        <p className={styles.subtitle}>{text.subtitle}</p>
+      <header className={styles.headerRow}>
+        <div className={styles.header}>
+          <button type="button" className={styles.backButton} onClick={closeCamera}>
+            {text.backToCameras}
+          </button>
+          <h2 id="audit-panel-title" className={styles.title}>
+            {cameraLabel(camera)}
+          </h2>
+          <p className={styles.subtitle}>{text.activeCameraHint}</p>
+        </div>
+        <div className={styles.headerControls}>
+          {state.previewUrl ? (
+            <div className={styles.viewToggle} role="group" aria-label={text.viewToggleLabel}>
+              <button
+                type="button"
+                className={`${styles.viewToggleButton} ${showCapture ? '' : styles.viewToggleActive}`}
+                onClick={() => setViewMode('stream')}
+                aria-pressed={!showCapture}
+              >
+                {text.viewLive}
+              </button>
+              <button
+                type="button"
+                className={`${styles.viewToggleButton} ${showCapture ? styles.viewToggleActive : ''}`}
+                onClick={() => setViewMode('capture')}
+                aria-pressed={showCapture}
+              >
+                {text.viewCapture}
+              </button>
+            </div>
+          ) : null}
+          <div className={`${styles.streamBadge} ${streamState.status === 'live' ? styles.streamBadgeLive : ''}`}>
+            <span className={styles.streamDot} />
+            {showCapture ? text.viewingCapture : streamStatusLabel(camera)}
+          </div>
+        </div>
       </header>
 
-      <section className={styles.controlPanel} aria-label={text.controlPanelLabel}>
-        <label className={styles.field}>
-          <span>{text.camera}</span>
-          <select
-            className={styles.select}
-            value={selectedCamera}
-            disabled={isBusy || isMonitoring}
-            onChange={(event) => setSelectedCamera(event.target.value)}
-          >
-            {cameras.length > 0 ? (
-              cameras.map((camera) => (
-                <option key={camera.id} value={camera.id}>
-                  {camera.label}
-                </option>
-              ))
-            ) : (
-              <option value={selectedCamera}>{`${text.cameraFallback} ${selectedCamera}`}</option>
-            )}
-          </select>
-        </label>
+      <section className={styles.activeCamera} aria-label={text.activeCameraLabel}>
+        <div className={styles.activeViewer}>
+          {showCapture && state.previewUrl ? (
+            <img className={styles.activeImage} src={state.previewUrl} alt={text.previewAlt} />
+          ) : streamState.status === 'live' || streamState.status === 'starting' ? (
+            <img
+              key={`active-${camera}-${streamState.reloadKey}`}
+              className={styles.activeImage}
+              src={streams.videoUrl(camera)}
+              alt={cameraLabel(camera)}
+              onLoad={() => streams.markLive(camera)}
+              onError={() => streams.markError(camera, text.streamErrorDetail)}
+            />
+          ) : (
+            <div className={styles.activePlaceholder}>
+              <p className={styles.activePlaceholderTitle}>{text.streamOffline}</p>
+              <p className={styles.activePlaceholderCopy}>{text.streamOfflineCopy}</p>
+            </div>
+          )}
+          {!showCapture && streamState.status === 'starting' ? (
+            <div className={styles.viewerOverlay} role="status" aria-live="polite">
+              <div className={styles.spinner} />
+              <span>{text.streamStarting}</span>
+            </div>
+          ) : null}
+        </div>
 
+        {streamState.status === 'error' && streamState.error ? (
+          <p className={styles.errorLine}>{streamState.error}</p>
+        ) : null}
+      </section>
+
+      <section className={styles.controlPanel} aria-label={text.controlPanelLabel}>
         <label className={styles.field}>
           <span>{text.model}</span>
           <select
             className={styles.select}
-            value={selectedModel}
-            disabled={isBusy || isMonitoring}
-            onChange={(event) => setSelectedModel(event.target.value)}
+            value={activeConfig.model}
+            disabled={isBusy}
+            onChange={(event) => updateConfig(camera, { model: event.target.value })}
           >
             {models.length > 0 ? (
               models.map((model) => (
@@ -207,7 +520,7 @@ export function ImageUploadPanel({
                 </option>
               ))
             ) : (
-              <option value={selectedModel}>{selectedModel || text.defaultModel}</option>
+              <option value={activeConfig.model}>{activeConfig.model || text.defaultModel}</option>
             )}
           </select>
         </label>
@@ -216,12 +529,11 @@ export function ImageUploadPanel({
           <span>{text.planogram}</span>
           <select
             className={styles.select}
-            value={selectedPlanogramId}
-            disabled={isBusy || isMonitoring || planogramLoading}
-            onChange={(event) => void onPlanogramChange(event.target.value)}
+            value={activeConfig.planogramId}
+            disabled={isBusy}
+            onChange={(event) => updateConfig(camera, { planogramId: event.target.value })}
           >
-            {planogramLoading ? <option value="">{text.planogramLoading}</option> : null}
-            {!planogramLoading && planograms.length === 0 ? <option value="">{text.planogramNone}</option> : null}
+            <option value="">{text.planogramNone}</option>
             {planograms.map((planogram) => (
               <option key={planogram.id} value={planogram.id}>
                 {planogram.name}
@@ -234,12 +546,12 @@ export function ImageUploadPanel({
           <span>{text.interval}</span>
           <select
             className={styles.select}
-            value={intervalMs}
-            disabled={isBusy || isMonitoring}
-            onChange={(event) => setIntervalMs(Number(event.target.value))}
+            value={activeConfig.intervalMs}
+            disabled={isBusy}
+            onChange={(event) => updateConfig(camera, { intervalMs: Number(event.target.value) })}
           >
             {text.intervalOptions.map((label, index) => (
-              <option key={label} value={[60_000, 120_000, 300_000, 600_000][index]}>
+              <option key={label} value={INTERVAL_VALUES[index]}>
                 {label}
               </option>
             ))}
@@ -250,24 +562,48 @@ export function ImageUploadPanel({
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={isBusy || isMonitoring || !selectedModel}
-            onClick={() => onStartMonitoring(selectedCamera, selectedModel, intervalMs)}
+            disabled={isBusy || !activeConfig.model}
+            onClick={() =>
+              audit.startMonitoring(
+                camera,
+                activeConfig.model,
+                activeConfig.intervalMs,
+                language,
+                activeConfig.planogramId || null,
+              )
+            }
           >
-            {text.startMonitoring}
+            {monitoringActive ? text.saveUpdate : text.save}
           </button>
           <button
             type="button"
             className={styles.ghostButton}
-            disabled={isBusy || !selectedModel}
-            onClick={() => void onAnalyzeCameraCapture(selectedCamera, selectedModel)}
+            disabled={isBusy || !activeConfig.model}
+            onClick={() => {
+              // Show the annotated result of this manual analysis.
+              setViewMode('capture')
+              void audit.submitCameraCapture(camera, activeConfig.model, language, activeConfig.planogramId || null)
+            }}
           >
             {text.analyzeNow}
           </button>
-          <button type="button" className={styles.ghostButton} disabled={!isMonitoring} onClick={onStopMonitoring}>
+          <button
+            type="button"
+            className={styles.ghostButton}
+            disabled={!monitoringActive}
+            onClick={() => audit.stopMonitoring(camera)}
+          >
             {text.stopMonitor}
           </button>
         </div>
       </section>
+
+      {monitoringActive ? (
+        <p className={styles.statusLine}>
+          {text.savedHint}
+          {activeConfig.planogramId ? ` · ${planogramName(activeConfig.planogramId)}` : ''}
+        </p>
+      ) : null}
 
       <div
         className={`${styles.dropzone} ${isDragging ? styles.dropzoneActive : ''}`}
@@ -300,40 +636,40 @@ export function ImageUploadPanel({
         </div>
       </div>
 
-      {state.previewUrl ? (
-        <div className={styles.previewWrap}>
-          <img className={styles.preview} src={state.previewUrl} alt={text.previewAlt} />
-          <div className={styles.metaRow}>
-            <p className={styles.fileName}>{state.fileName}</p>
-            <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                disabled={isBusy || !selectedModel}
-                onClick={() => void onStartInference(selectedModel)}
-              >
-                {isBusy ? text.running : text.startInference}
-              </button>
-              <button
-                type="button"
-                className={styles.ghostButton}
-                disabled={isBusy}
-                onClick={() => inputRef.current?.click()}
-              >
-                {text.replace}
-              </button>
-              <button type="button" className={styles.ghostButton} disabled={isBusy} onClick={onClear}>
-                {text.clear}
-              </button>
-            </div>
+      {state.previewUrl && state.fileName ? (
+        <div className={styles.previewMeta}>
+          <p className={styles.fileName}>{state.fileName}</p>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isBusy || !activeConfig.model}
+              onClick={() => {
+                setViewMode('capture')
+                void audit.submitImage(camera, activeConfig.model, language, activeConfig.planogramId || null)
+              }}
+            >
+              {isBusy ? text.running : text.startInference}
+            </button>
+            <button type="button" className={styles.ghostButton} disabled={isBusy} onClick={() => inputRef.current?.click()}>
+              {text.replace}
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              disabled={isBusy}
+              onClick={() => {
+                audit.clearAudit(camera)
+                setViewMode('stream')
+              }}
+            >
+              {text.clear}
+            </button>
           </div>
         </div>
       ) : null}
 
-      {state.status === 'ready' ? (
-        <p className={styles.statusLine}>{text.ready}</p>
-      ) : null}
-      {isMonitoring ? <p className={styles.statusLine}>{text.monitoring}</p> : null}
+      {state.status === 'ready' ? <p className={styles.statusLine}>{text.ready}</p> : null}
       {isBusy || state.status === 'success' ? (
         <div className={styles.progressPanel} role="status" aria-live="polite">
           <div className={styles.progressHeader}>
@@ -348,10 +684,7 @@ export function ImageUploadPanel({
           </div>
           <ol className={styles.stepList}>
             {steps.map((step) => (
-              <li
-                key={step.id}
-                className={`${styles.stepItem} ${styles[`step_${step.status}`] ?? ''}`}
-              >
+              <li key={step.id} className={`${styles.stepItem} ${styles[`step_${step.status}`] ?? ''}`}>
                 <span className={styles.stepName}>{stepLabel(text, step.id)}</span>
                 <span className={styles.stepStatus}>{stepStatusLabel(text, step.status)}</span>
               </li>
@@ -372,9 +705,7 @@ export function ImageUploadPanel({
 
         <article className={`${styles.box} ${styles.explanationBox}`} aria-live="polite">
           <h3 className={styles.boxLabel}>{text.explanation}</h3>
-          <p className={`${styles.boxBody} ${explanation ? '' : styles.boxEmpty}`}>
-            {explanation || text.waiting}
-          </p>
+          <p className={`${styles.boxBody} ${explanation ? '' : styles.boxEmpty}`}>{explanation || text.waiting}</p>
         </article>
 
         <article className={`${styles.box} ${styles.planogramBox}`} aria-live="polite">

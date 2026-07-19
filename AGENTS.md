@@ -84,7 +84,9 @@ Browser UI  (:5173)
 
 ### `frontend/` — React workspace
 
-- Pages: Camera Stream, Shelf Audit, Planogram, Ticket Board, Agent Chat, Database.
+- Pages: Shelf Audit, Planogram, Ticket Board, Agent Chat, Database.
+  (Live camera streaming is integrated into Shelf Audit — there is no separate
+  Camera Stream page.)
 - API modules under `src/api/`; hooks under `src/hooks/`; types under `src/types/`.
 - Env:
   - `VITE_API_BASE_URL` → backend (`http://localhost:8000`); empty ⇒ chat/DB/planogram local stubs.
@@ -92,10 +94,19 @@ Browser UI  (:5173)
 - Planogram flow: upload a shelf photo, **draw facing rectangles by hand** on
   the image, fill item name / price / stock / SKU per region, then mark one
   planogram active.
-- Shelf audit flow: **detect via model-local**, match detections to the **active
-  planogram** (`POST /api/v1/planograms/{id}/match`), then send both JSON blobs
-  to backend `POST /api/v1/audit/analyze-detections` (which also runs the
-  closed-loop ticket pipeline).
+- Shelf audit flow: each available camera renders as a **block** (cover = its
+  latest capture, status label = auditing / not auditing) with quick
+  start/stop, assigned planogram, and interval controls. **Refresh cameras**
+  re-probes devices. Click a block to open its **live MJPEG stream** (only the
+  opened camera streams) with full controls, upload, and analysis. Auditing is
+  per-camera **background monitoring** (`useAuditAnalysis`): each camera keeps
+  its own timer/config and keeps running when you open another camera or leave
+  the page. Each camera can target its own planogram (threaded as an override
+  through `analyze-detections`; falls back to the global active planogram).
+  Detection is **via model-local**; matches go to the chosen planogram
+  (`POST /api/v1/planograms/{id}/match`), then both JSON blobs to backend
+  `POST /api/v1/audit/analyze-detections` (which also runs the closed-loop
+  ticket pipeline).
 - Ticket board: kanban of action tickets, status transitions, verify re-scan,
   and admin webhook settings (Slack / WeCom / generic).
 - Commands: `npm install` / `npm run dev` / `npm run build` / `npm run lint`.

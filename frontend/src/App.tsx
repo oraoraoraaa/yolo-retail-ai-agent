@@ -6,7 +6,6 @@ import { ChatPanel } from '@/components/chat/ChatPanel'
 import { DatabasePanel } from '@/components/database/DatabasePanel'
 import { AppShell, type AppPage, type AppPageId } from '@/components/layout/AppShell'
 import { PlanogramPanel } from '@/components/planogram/PlanogramPanel'
-import { StreamPanel } from '@/components/stream/StreamPanel'
 import { TicketBoardPanel } from '@/components/tickets/TicketBoardPanel'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useAuditAnalysis } from '@/hooks/useAuditAnalysis'
@@ -19,7 +18,7 @@ function getInitialLanguage(): Language {
 }
 
 function App() {
-  const [activePageId, setActivePageId] = useState<AppPageId>('stream')
+  const [activePageId, setActivePageId] = useState<AppPageId>('audit')
   const [language, setLanguage] = useState<Language>(getInitialLanguage)
   const auth = useAuth()
   const audit = useAuditAnalysis()
@@ -27,11 +26,6 @@ function App() {
   const text = UI_TEXT[language]
 
   const pages: AppPage[] = [
-    {
-      id: 'stream',
-      label: text.pages.stream[0],
-      description: text.pages.stream[1],
-    },
     {
       id: 'audit',
       label: text.pages.audit[0],
@@ -99,20 +93,8 @@ function App() {
       logoutLabel={auth.authEnabled ? text.auth.signOut : undefined}
       onLogout={auth.authEnabled ? auth.logout : undefined}
     >
-      {activePageId === 'stream' ? <StreamPanel text={text.stream} /> : null}
-
       {activePageId === 'audit' ? (
-        <ImageUploadPanel
-          text={text.audit}
-          state={audit.state}
-          isMonitoring={audit.isMonitoring}
-          onSelectImage={audit.selectImage}
-          onStartInference={(model) => audit.submitImage(model, language)}
-          onAnalyzeCameraCapture={(camera, model) => audit.submitCameraCapture(camera, model, language)}
-          onStartMonitoring={(camera, model, intervalMs) => audit.startMonitoring(camera, model, intervalMs, language)}
-          onStopMonitoring={audit.stopMonitoring}
-          onClear={audit.clearAudit}
-        />
+        <ImageUploadPanel text={text.audit} language={language} audit={audit} />
       ) : null}
 
       {activePageId === 'planogram' ? <PlanogramPanel text={text.planogram} /> : null}

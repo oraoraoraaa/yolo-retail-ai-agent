@@ -28,6 +28,7 @@ export {
   captureCameraDetection,
   detectUploadedImage,
   getStreamStatus,
+  getStreamStatuses,
   getStreamVideoUrl,
   listStreamCameras,
   listStreamModels,
@@ -44,4 +45,5 @@ export type {
   StreamModel,
   StreamModelsResponse,
   StreamStatusResponse,
+  StreamStatusesResponse,
 } from './stream'

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -91,6 +92,26 @@ def probe_camera_index(index: int) -> bool:
         finally:
             capture.release()
     return False
+
+
+def camera_display_name(index: int) -> str | None:
+    """Return a human-readable device name for a camera index when available.
+
+    On Linux, V4L2 exposes the device product name under
+    ``/sys/class/video4linux/videoN/name`` (e.g. "Integrated Camera",
+    "Logitech BRIO"). Returns None when no friendly name can be resolved, so
+    callers can fall back to a generic label.
+    """
+    if sys.platform.startswith("linux"):
+        name_path = Path(f"/sys/class/video4linux/video{index}/name")
+        try:
+            if name_path.exists():
+                name = name_path.read_text(encoding="utf-8", errors="replace").strip()
+                if name:
+                    return name
+        except OSError:
+            pass
+    return None
 
 
 def get_detection_names(model: object, result: object | None) -> dict[int, str]:

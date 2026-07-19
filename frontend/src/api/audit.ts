@@ -40,6 +40,7 @@ export async function analyzeShelfImage(
   model: string,
   language: Language,
   onProgress?: AuditProgressHandler,
+  planogramId?: string | null,
 ): Promise<AuditAnalysisResult> {
   onProgress?.({ step: 'vision', status: 'running' })
   const visionModelResponse = await detectUploadedImage(file, model)
@@ -59,6 +60,7 @@ export async function analyzeShelfImage(
     imageBase64,
     sourceLabel: file.name,
     onProgress,
+    planogramId,
   })
 }
 
@@ -67,6 +69,7 @@ export async function analyzeShelfCameraCapture(
   model: string,
   language: Language,
   onProgress?: AuditProgressHandler,
+  planogramId?: string | null,
 ): Promise<AuditAnalysisResult> {
   onProgress?.({ step: 'vision', status: 'running' })
   const visionModelResponse = await captureCameraDetection(camera, model)
@@ -85,6 +88,7 @@ export async function analyzeShelfCameraCapture(
     imageBase64: visionModelResponse.annotatedImage ?? null,
     sourceLabel: `camera:${camera}`,
     onProgress,
+    planogramId,
   })
 }
 
@@ -95,12 +99,18 @@ async function analyzeVisionModelResponse(
     imageBase64?: string | null
     sourceLabel?: string
     onProgress?: AuditProgressHandler
+    /**
+     * Explicit planogram to match against. When undefined, the globally active
+     * planogram is used. This lets each camera audit against its own assigned
+     * planogram without changing the global active selection.
+     */
+    planogramId?: string | null
   } = {},
 ): Promise<AuditAnalysisResult> {
   const onProgress = options.onProgress
 
   onProgress?.({ step: 'planogram', status: 'running' })
-  const planogramResponse = await queryPlanogramForDetections(visionModelResponse)
+  const planogramResponse = await queryPlanogramForDetections(visionModelResponse, options.planogramId)
   onProgress?.({
     step: 'planogram',
     status: planogramResponse ? 'done' : 'skipped',
@@ -148,12 +158,14 @@ async function analyzeVisionModelResponse(
 
 async function queryPlanogramForDetections(
   visionModelResponse: LocalDetectionResult,
+  planogramId?: string | null,
 ): Promise<PlanogramMatchResult | null> {
-  const activeId = await getActivePlanogramId()
-  if (!activeId) {
+  // Prefer an explicit per-camera planogram; fall back to the global active one.
+  const targetId = planogramId ?? (await getActivePlanogramId())
+  if (!targetId) {
     return null
   }
-  return matchPlanogramDetections(activeId, visionModelResponse)
+  return matchPlanogramDetections(targetId, visionModelResponse)
 }
 
 async function requestAgentShelfRecommendation(

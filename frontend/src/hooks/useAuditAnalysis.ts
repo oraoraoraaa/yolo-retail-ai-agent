@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   analyzeShelfCameraCapture,
@@ -13,18 +13,42 @@ import {
   type AuditStepState,
 } from '@/types/audit'
 
-const INITIAL_STATE: AuditPanelState = {
-  status: 'idle',
-  previewUrl: null,
-  fileName: null,
-  result: null,
-  errorMessage: null,
-  steps: createInitialAuditSteps(),
-  activeStep: null,
+function createInitialState(): AuditPanelState {
+  return {
+    status: 'idle',
+    previewUrl: null,
+    fileName: null,
+    result: null,
+    errorMessage: null,
+    steps: createInitialAuditSteps(),
+    activeStep: null,
+  }
 }
 
 /** Cap how far the monitor interval stretches after consecutive failures. */
 const MAX_BACKOFF_MULTIPLIER = 8
+
+/** Mutable per-camera monitoring bookkeeping kept outside of React state. */
+interface CameraRuntime {
+  previewUrl: string | null
+  file: File | null
+  monitorTimer: number | null
+  monitorRunning: boolean
+  monitorParams: {
+    model: string
+    language: Language
+    baseIntervalMs: number
+    planogramId: string | null
+  } | null
+  failureStreak: number
+}
+
+/** Snapshot of a camera's saved background-monitoring config for the UI. */
+export interface MonitorSettings {
+  model: string
+  intervalMs: number
+  planogramId: string | null
+}
 
 function updateSteps(
   steps: AuditStepState[],
@@ -34,32 +58,51 @@ function updateSteps(
   return steps.map((item) => (item.id === step ? { ...item, status } : item))
 }
 
+/**
+ * Multi-camera shelf audit controller.
+ *
+ * Every camera keeps an independent audit state slot plus its own monitoring
+ * timer, so cameras keep auditing in the background when the operator switches
+ * the active (viewed) camera. The audit controls in the UI always target the
+ * camera id passed to each action, never a single global camera.
+ */
 export function useAuditAnalysis() {
-  const [state, setState] = useState<AuditPanelState>(INITIAL_STATE)
-  const [isMonitoring, setIsMonitoring] = useState(false)
-  const previewUrlRef = useRef<string | null>(null)
-  const fileRef = useRef<File | null>(null)
-  const monitorTimerRef = useRef<number | null>(null)
-  const monitorRunningRef = useRef(false)
-  const monitorParamsRef = useRef<{
-    camera: string
-    model: string
-    language: Language
-    baseIntervalMs: number
-  } | null>(null)
-  const failureStreakRef = useRef(0)
+  const [states, setStates] = useState<Record<string, AuditPanelState>>({})
+  const [monitoring, setMonitoring] = useState<Record<string, boolean>>({})
+  const runtimeRef = useRef<Map<string, CameraRuntime>>(new Map())
 
-  useEffect(() => {
-    return () => {
-      if (previewUrlRef.current) {
-        URL.revokeObjectURL(previewUrlRef.current)
+  function getRuntime(camera: string): CameraRuntime {
+    let runtime = runtimeRef.current.get(camera)
+    if (!runtime) {
+      runtime = {
+        previewUrl: null,
+        file: null,
+        monitorTimer: null,
+        monitorRunning: false,
+        monitorParams: null,
+        failureStreak: 0,
       }
-      stopMonitoring()
+      runtimeRef.current.set(camera, runtime)
     }
-  }, [])
+    return runtime
+  }
 
-  function applyProgress(event: AuditProgressEvent): void {
-    setState((previous) => {
+  function patchState(camera: string, updater: (previous: AuditPanelState) => AuditPanelState): void {
+    setStates((current) => {
+      const previous = current[camera] ?? createInitialState()
+      return { ...current, [camera]: updater(previous) }
+    })
+  }
+
+  const getState = useCallback(
+    (camera: string): AuditPanelState => states[camera] ?? createInitialState(),
+    [states],
+  )
+
+  const isMonitoring = useCallback((camera: string): boolean => monitoring[camera] ?? false, [monitoring])
+
+  function applyProgress(camera: string, event: AuditProgressEvent): void {
+    patchState(camera, (previous) => {
       const nextSteps = updateSteps(
         previous.steps.length ? previous.steps : createInitialAuditSteps(),
         event.step,
@@ -83,9 +126,10 @@ export function useAuditAnalysis() {
 
       let previewUrl = previous.previewUrl
       if (partial.annotatedImage) {
-        if (previewUrlRef.current && previewUrlRef.current.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrlRef.current)
-          previewUrlRef.current = null
+        const runtime = getRuntime(camera)
+        if (runtime.previewUrl && runtime.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(runtime.previewUrl)
+          runtime.previewUrl = null
         }
         previewUrl = partial.annotatedImage
       }
@@ -102,16 +146,17 @@ export function useAuditAnalysis() {
     })
   }
 
-  function selectImage(file: File): void {
-    if (previewUrlRef.current) {
-      URL.revokeObjectURL(previewUrlRef.current)
+  function selectImage(camera: string, file: File): void {
+    const runtime = getRuntime(camera)
+    if (runtime.previewUrl) {
+      URL.revokeObjectURL(runtime.previewUrl)
     }
 
     const previewUrl = URL.createObjectURL(file)
-    previewUrlRef.current = previewUrl
-    fileRef.current = file
+    runtime.previewUrl = previewUrl
+    runtime.file = file
 
-    setState({
+    patchState(camera, () => ({
       status: 'ready',
       previewUrl,
       fileName: file.name,
@@ -119,21 +164,28 @@ export function useAuditAnalysis() {
       errorMessage: null,
       steps: createInitialAuditSteps(),
       activeStep: null,
-    })
+    }))
   }
 
-  async function submitImage(model: string, language: Language): Promise<void> {
-    const file = fileRef.current
+  async function submitImage(
+    camera: string,
+    model: string,
+    language: Language,
+    planogramId?: string | null,
+  ): Promise<void> {
+    const runtime = getRuntime(camera)
+    const file = runtime.file
     if (!file) {
-      setState((previous) => ({
+      patchState(camera, (previous) => ({
         ...previous,
         status: 'error',
-        errorMessage: 'Please choose an image before starting inference.',
+        errorMessage:
+          language === 'zh' ? '开始推理前请先选择图片。' : 'Please choose an image before starting inference.',
       }))
       return
     }
 
-    setState((previous) => ({
+    patchState(camera, (previous) => ({
       ...previous,
       status: 'analyzing',
       result: null,
@@ -143,27 +195,29 @@ export function useAuditAnalysis() {
     }))
 
     try {
-      const result = await analyzeShelfImage(file, model, language, applyProgress)
-      if (result.annotatedImage) {
-        if (previewUrlRef.current && previewUrlRef.current.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrlRef.current)
-          previewUrlRef.current = null
-        }
+      const result = await analyzeShelfImage(
+        file,
+        model,
+        language,
+        (event) => applyProgress(camera, event),
+        planogramId,
+      )
+      if (result.annotatedImage && runtime.previewUrl && runtime.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(runtime.previewUrl)
+        runtime.previewUrl = null
       }
-      setState((previous) => ({
+      patchState(camera, (previous) => ({
         ...previous,
         status: 'success',
         previewUrl: result.annotatedImage ?? previous.previewUrl,
         result,
         errorMessage: null,
         activeStep: null,
-        steps: previous.steps.map((step) =>
-          step.status === 'pending' ? { ...step, status: 'done' } : step,
-        ),
+        steps: previous.steps.map((step) => (step.status === 'pending' ? { ...step, status: 'done' } : step)),
       }))
     } catch {
       const message = language === 'zh' ? '图片分析失败。' : 'Image analysis failed.'
-      setState((previous) => ({
+      patchState(camera, (previous) => ({
         ...previous,
         status: 'error',
         errorMessage: message,
@@ -172,13 +226,19 @@ export function useAuditAnalysis() {
     }
   }
 
-  async function submitCameraCapture(camera: string, model: string, language: Language): Promise<void> {
-    if (monitorRunningRef.current) {
+  async function submitCameraCapture(
+    camera: string,
+    model: string,
+    language: Language,
+    planogramId?: string | null,
+  ): Promise<void> {
+    const runtime = getRuntime(camera)
+    if (runtime.monitorRunning) {
       return
     }
 
-    monitorRunningRef.current = true
-    setState((previous) => ({
+    runtime.monitorRunning = true
+    patchState(camera, (previous) => ({
       ...previous,
       status: 'analyzing',
       fileName: language === 'zh' ? `摄像头 ${camera} 抓拍` : `Camera ${camera} capture`,
@@ -189,8 +249,14 @@ export function useAuditAnalysis() {
     }))
 
     try {
-      const result = await analyzeShelfCameraCapture(camera, model, language, applyProgress)
-      setState((previous) => ({
+      const result = await analyzeShelfCameraCapture(
+        camera,
+        model,
+        language,
+        (event) => applyProgress(camera, event),
+        planogramId,
+      )
+      patchState(camera, (previous) => ({
         ...previous,
         status: 'success',
         previewUrl: result.annotatedImage ?? previous.previewUrl,
@@ -198,105 +264,153 @@ export function useAuditAnalysis() {
         result,
         errorMessage: null,
         activeStep: null,
-        steps: previous.steps.map((step) =>
-          step.status === 'pending' ? { ...step, status: 'done' } : step,
-        ),
+        steps: previous.steps.map((step) => (step.status === 'pending' ? { ...step, status: 'done' } : step)),
       }))
-      failureStreakRef.current = 0
+      runtime.failureStreak = 0
     } catch {
-      failureStreakRef.current += 1
+      runtime.failureStreak += 1
       const message = language === 'zh' ? '摄像头抓拍分析失败。' : 'Camera capture analysis failed.'
-      setState((previous) => ({
+      patchState(camera, (previous) => ({
         ...previous,
         status: 'error',
         errorMessage: message,
         activeStep: null,
       }))
     } finally {
-      monitorRunningRef.current = false
+      runtime.monitorRunning = false
     }
   }
 
-  function clearMonitorTimer(): void {
-    if (monitorTimerRef.current !== null) {
-      window.clearTimeout(monitorTimerRef.current)
-      monitorTimerRef.current = null
+  function clearMonitorTimer(camera: string): void {
+    const runtime = getRuntime(camera)
+    if (runtime.monitorTimer !== null) {
+      window.clearTimeout(runtime.monitorTimer)
+      runtime.monitorTimer = null
     }
   }
 
-  function scheduleNextMonitorTick(): void {
-    const params = monitorParamsRef.current
+  function scheduleNextMonitorTick(camera: string): void {
+    const runtime = getRuntime(camera)
+    const params = runtime.monitorParams
     if (!params) {
       return
     }
 
-    const multiplier = Math.min(
-      MAX_BACKOFF_MULTIPLIER,
-      2 ** Math.max(0, failureStreakRef.current),
-    )
+    const multiplier = Math.min(MAX_BACKOFF_MULTIPLIER, 2 ** Math.max(0, runtime.failureStreak))
     const delay = Math.max(1_000, params.baseIntervalMs * multiplier)
 
-    clearMonitorTimer()
-    monitorTimerRef.current = window.setTimeout(() => {
-      void runMonitorTick()
+    clearMonitorTimer(camera)
+    runtime.monitorTimer = window.setTimeout(() => {
+      void runMonitorTick(camera)
     }, delay)
   }
 
-  async function runMonitorTick(): Promise<void> {
-    const params = monitorParamsRef.current
+  async function runMonitorTick(camera: string): Promise<void> {
+    const runtime = getRuntime(camera)
+    const params = runtime.monitorParams
     if (!params) {
       return
     }
 
-    if (monitorRunningRef.current) {
-      scheduleNextMonitorTick()
+    if (runtime.monitorRunning) {
+      scheduleNextMonitorTick(camera)
       return
     }
 
-    await submitCameraCapture(params.camera, params.model, params.language)
+    await submitCameraCapture(camera, params.model, params.language, params.planogramId)
 
-    if (monitorParamsRef.current) {
-      scheduleNextMonitorTick()
+    if (runtime.monitorParams) {
+      scheduleNextMonitorTick(camera)
     }
   }
 
-  function startMonitoring(camera: string, model: string, intervalMs: number, language: Language): void {
-    stopMonitoring()
-    monitorParamsRef.current = {
-      camera,
+  function startMonitoring(
+    camera: string,
+    model: string,
+    intervalMs: number,
+    language: Language,
+    planogramId?: string | null,
+  ): void {
+    stopMonitoring(camera)
+    const runtime = getRuntime(camera)
+    runtime.monitorParams = {
       model,
       language,
       baseIntervalMs: Math.max(1_000, intervalMs),
+      planogramId: planogramId ?? null,
     }
-    failureStreakRef.current = 0
-    setIsMonitoring(true)
-    void runMonitorTick()
+    runtime.failureStreak = 0
+    setMonitoring((current) => ({ ...current, [camera]: true }))
+    void runMonitorTick(camera)
   }
 
-  function stopMonitoring(): void {
-    clearMonitorTimer()
-    monitorParamsRef.current = null
-    failureStreakRef.current = 0
-    setIsMonitoring(false)
+  /** Read a camera's saved background-monitoring settings, if any. */
+  const getMonitorSettings = useCallback((camera: string): MonitorSettings | null => {
+    const runtime = runtimeRef.current.get(camera)
+    if (!runtime?.monitorParams) {
+      return null
+    }
+    return {
+      model: runtime.monitorParams.model,
+      intervalMs: runtime.monitorParams.baseIntervalMs,
+      planogramId: runtime.monitorParams.planogramId,
+    }
+  }, [])
+
+  function stopMonitoring(camera: string): void {
+    clearMonitorTimer(camera)
+    const runtime = getRuntime(camera)
+    runtime.monitorParams = null
+    runtime.failureStreak = 0
+    setMonitoring((current) => {
+      if (!current[camera]) {
+        return current
+      }
+      return { ...current, [camera]: false }
+    })
   }
 
-  function clearAudit(): void {
-    if (previewUrlRef.current) {
-      URL.revokeObjectURL(previewUrlRef.current)
-      previewUrlRef.current = null
+  function stopAllMonitoring(): void {
+    for (const camera of runtimeRef.current.keys()) {
+      stopMonitoring(camera)
     }
-    fileRef.current = null
-    setState(INITIAL_STATE)
   }
+
+  function clearAudit(camera: string): void {
+    const runtime = getRuntime(camera)
+    if (runtime.previewUrl) {
+      URL.revokeObjectURL(runtime.previewUrl)
+      runtime.previewUrl = null
+    }
+    runtime.file = null
+    patchState(camera, () => createInitialState())
+  }
+
+  useEffect(() => {
+    const runtimes = runtimeRef.current
+    return () => {
+      for (const runtime of runtimes.values()) {
+        if (runtime.previewUrl) {
+          URL.revokeObjectURL(runtime.previewUrl)
+        }
+        if (runtime.monitorTimer !== null) {
+          window.clearTimeout(runtime.monitorTimer)
+        }
+        runtime.monitorParams = null
+      }
+    }
+  }, [])
 
   return {
-    state,
+    getState,
     isMonitoring,
+    getMonitorSettings,
     selectImage,
     submitImage,
     submitCameraCapture,
     startMonitoring,
     stopMonitoring,
+    stopAllMonitoring,
     clearAudit,
   }
 }
