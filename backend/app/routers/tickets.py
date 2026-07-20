@@ -21,6 +21,7 @@ from app.schemas.tickets import (
 )
 from app.services.auth import AuthUser, get_current_user, require_write
 from app.services.closed_loop import get_closed_loop_agent
+from app.services.observation_store import get_observation_store
 from app.services.ticket_store import get_ticket_store
 from app.services.webhooks import (
     load_webhook_settings,
@@ -51,6 +52,9 @@ async def clear_tickets(
 ) -> TicketClearResult:
     """Wipe the action-ticket board. Leaves planograms, users, and DB records."""
     deleted = get_ticket_store().clear_all()
+    # Reset debounce observations too so a fresh board doesn't inherit stale
+    # confirmation counts from before the wipe.
+    get_observation_store().clear_all()
     return TicketClearResult(deleted=deleted)
 
 

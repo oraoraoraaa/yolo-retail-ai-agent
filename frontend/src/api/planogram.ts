@@ -247,19 +247,36 @@ function containsSlot(slot: PlanogramSlot, cx: number, cy: number): boolean {
   return cx >= slot.x && cx <= slot.x + slot.width && cy >= slot.y && cy <= slot.y + slot.height
 }
 
+function pointInRegion(
+  region: { x1: number; y1: number; x2: number; y2: number },
+  cx: number,
+  cy: number,
+): boolean {
+  const loX = Math.min(region.x1, region.x2)
+  const hiX = Math.max(region.x1, region.x2)
+  const loY = Math.min(region.y1, region.y2)
+  const hiY = Math.max(region.y1, region.y2)
+  return cx >= loX && cx <= hiX && cy >= loY && cy <= hiY
+}
+
 function localMatchPlanogram(
   planogram: Planogram,
   visionModelResponse: {
     detections?: Array<{
       label: string
       confidence?: number
+      obscured?: boolean
       normalizedBox?: { x1: number; y1: number; x2: number; y2: number }
     }>
+    occlusion?: { regions?: Array<{ x1: number; y1: number; x2: number; y2: number }> }
   },
 ): PlanogramMatchResult {
   const matches: PlanogramMatchResult['matches'] = []
   const gapMatches: PlanogramMatchResult['gapMatches'] = []
+  const obscuredMatches: PlanogramMatchResult['obscuredMatches'] = []
   const missingMap = new Map<string, PlanogramMatchResult['missingItems'][number]>()
+  const obscuredSlotIds = new Set<string>()
+  const occlusionRegions = visionModelResponse.occlusion?.regions ?? []
 
   for (const detection of visionModelResponse.detections ?? []) {
     const box = detection.normalizedBox
@@ -275,7 +292,9 @@ function localMatchPlanogram(
         : candidates.reduce((best, current) =>
             current.width * current.height < best.width * best.height ? current : best,
           )
-    const status = isGapLabel(detection.label) ? 'gap' : 'product'
+    const isGap = isGapLabel(detection.label)
+    const isObscured = Boolean(detection.obscured)
+    const status = isGap && isObscured ? 'obscured' : isGap ? 'gap' : 'product'
     const entry = {
       detectionLabel: detection.label,
       confidence: detection.confidence,
@@ -283,8 +302,16 @@ function localMatchPlanogram(
       center: { x: cx, y: cy },
       slot,
       status,
+      obscured: isObscured,
     }
     matches.push(entry)
+    if (status === 'obscured') {
+      obscuredMatches.push(entry)
+      if (slot) {
+        obscuredSlotIds.add(slot.id)
+      }
+      continue
+    }
     if (status === 'gap') {
       gapMatches.push(entry)
       if (slot && (slot.itemName || slot.sku)) {
@@ -305,13 +332,69 @@ function localMatchPlanogram(
     }
   }
 
+  // Slots whose center falls inside an occlusion region are obscured even with
+  // no detection of their own (a fully covered facing).
+  for (const slot of planogram.slots) {
+    if (obscuredSlotIds.has(slot.id)) {
+      continue
+    }
+    const cx = slot.x + slot.width / 2
+    const cy = slot.y + slot.height / 2
+    if (occlusionRegions.some((region) => pointInRegion(region, cx, cy))) {
+      obscuredSlotIds.add(slot.id)
+      obscuredMatches.push({
+        detectionLabel: '',
+        confidence: undefined,
+        slotId: slot.id,
+        center: { x: cx, y: cy },
+        slot,
+        status: 'obscured',
+        obscured: true,
+      })
+    }
+  }
+
+  // Never report an obscured slot as missing.
+  for (const slotId of obscuredSlotIds) {
+    missingMap.delete(slotId)
+  }
+
   const missingItems = Array.from(missingMap.values())
+
+  // Out-of-stock is planogram ground truth (staff-entered stock): every slot
+  // with stock <= 0 needs a backroom ticket even when no gap was detected.
+  // Mirrors the backend planogram_match logic.
+  const outOfStockSlots: PlanogramMatchResult['outOfStockSlots'] = []
+  for (const slot of planogram.slots) {
+    if (slot.itemStock > 0) {
+      continue
+    }
+    if (!(slot.itemName || slot.sku)) {
+      continue
+    }
+    outOfStockSlots.push({
+      slotId: slot.id,
+      x: slot.x,
+      y: slot.y,
+      width: slot.width,
+      height: slot.height,
+      itemName: slot.itemName,
+      itemPrice: slot.itemPrice,
+      itemStock: slot.itemStock,
+      sku: slot.sku,
+      notes: slot.notes,
+    })
+  }
+  const obscuredSuffix =
+    obscuredSlotIds.size > 0 ? ` ${obscuredSlotIds.size} facing(s) obscured (skipped).` : ''
   let summary = `No gaps matched against planogram '${planogram.name}'.`
   if (missingItems.length > 0) {
     const names = missingItems.map((item) => item.itemName || item.sku || item.slotId).join(', ')
-    summary = `Matched ${gapMatches.length} gap(s) to planogram '${planogram.name}'. Likely missing: ${names}.`
+    summary = `Matched ${gapMatches.length} gap(s) to planogram '${planogram.name}'. Likely missing: ${names}.${obscuredSuffix}`
   } else if (gapMatches.length > 0) {
-    summary = `Matched ${gapMatches.length} gap(s) on planogram '${planogram.name}', but those regions have no assigned SKU metadata.`
+    summary = `Matched ${gapMatches.length} gap(s) on planogram '${planogram.name}', but those regions have no assigned SKU metadata.${obscuredSuffix}`
+  } else if (obscuredSlotIds.size > 0) {
+    summary = `No confirmed gaps on planogram '${planogram.name}'.${obscuredSuffix}`
   }
 
   return {
@@ -320,7 +403,9 @@ function localMatchPlanogram(
     slotCount: planogram.slots.length,
     matches,
     gapMatches,
+    obscuredMatches,
     missingItems,
+    outOfStockSlots,
     summary,
   }
 }

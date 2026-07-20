@@ -69,7 +69,72 @@ login screen and attaches the token automatically.
 
 Local demos keep `AUTH_ENABLED=false` (default) so the UI works without login.
 
-## Graceful degradation
+## Ticket rules (findings → assignee)
+
+`extract_findings` (in `services/closed_loop.py`) turns a vision + planogram
+match into action tickets. One SKU produces **at most one ticket per issue
+type** (facings are aggregated first):
+
+- **`out_of_stock` → backroom.** Planogram stock ≤ 0 is staff-entered **ground
+  truth**, so this ticket opens **the moment stock is 0, whether or not the
+  camera detected a gap** (the last unit may still be on the shelf, or the
+  facing may be occluded this frame). `planogram_match` surfaces every stock-0
+  slot as `outOfStockSlots`, independent of detections, and the finding fires
+  even when vision saw nothing at all. Because it is ground truth (not a flaky
+  vision reading), `out_of_stock` **bypasses the temporal debounce/span gate**
+  and dispatches immediately.
+- **`shelf_empty` → floor_staff.** A gap facing that matches a planogram item
+  whose stock is **> 0 or unknown** — a floor restock/facing task.
+- **Empty facing (gap matches a stock-0 item)** opens the `out_of_stock`
+  backroom ticket **only** (no companion floor ticket), plus one store-wide
+  announcement.
+- **`low_stock` → backroom** on severity bands; **`camera_issue` →
+  floor_staff + manager** (suppressed when the view is occlusion-obstructed).
+
+**No re-issue for the same problem.** Every finding carries a fingerprint
+`(issueType, planogramId, skuKey)`. The gap-matched and planogram-driven
+out-of-stock paths share the **same** fingerprint, so whichever fires first
+opens the ticket and the other dedupes against the open ticket
+(`find_open_by_fingerprint` covers open/dispatched/in_progress/escalated/done).
+An out-of-stock SKU therefore never opens two tickets, and re-audits do not
+re-notify while the ticket stays open.
+
+## False-positive suppression (busy-store occlusion)
+
+In a busy store, customers constantly walk between the camera and the shelf. A
+person standing in front of a facing reads as a `gap` (and, when they fill the
+frame, as zero detections → a false `camera_issue`). Three layers cooperate to
+stop a single occluded snapshot from firing a bogus ticket:
+
+1. **Temporal clean plate + occlusion mask (model-local).** Audits capture a
+   short burst of frames and detect on their per-pixel median, so anyone who
+   moves is removed. A motion mask flags boxes/regions that stayed busy and is
+   returned as an `occlusion` block plus per-detection `obscured` flags. See
+   [`model-local/README.md`](../model-local/README.md).
+2. **Occlusion-aware gating (backend).** `planogram_match` reports obscured gaps
+   with `status="obscured"` and keeps them **out** of `missingItems`, so an
+   occluded facing can never open a restock ticket. Slots whose center falls in
+   a reported occlusion region are treated the same even with no detection of
+   their own (a fully-covered facing). `extract_findings` suppresses
+   `camera_issue` when the vision layer reports the view is obstructed by
+   motion (a customer in front of the lens is not a broken camera).
+3. **Temporal debounce (backend).** Before opening a **new** ticket, a finding
+   must be observed in at least `DEBOUNCE_MIN_OBSERVATIONS` audits inside the
+   trailing `DEBOUNCE_WINDOW_SECONDS` window (scoped per shelf/camera via the
+   audit `sourceLabel`). A transient gap that vanishes on the next audit never
+   reaches the threshold; a genuinely empty shelf persists and gets ticketed.
+   Observations are stored in the `finding_observations` table and reset when
+   the ticket board is wiped. Set `DEBOUNCE_MIN_OBSERVATIONS=1` to disable.
+   Debounce gates **vision-derived** findings only (gaps, camera issues);
+   planogram `out_of_stock` is ground truth and bypasses it.
+
+Debounced (awaiting-confirmation) findings appear in the closed-loop result's
+`debounced` list and are summarized in the narrative; they are not errors.
+
+Relevant env (see `.env.example`): `DEBOUNCE_MIN_OBSERVATIONS`,
+`DEBOUNCE_WINDOW_SECONDS`, `DEBOUNCE_RETENTION_SECONDS`.
+
+## Degradation
 
 - **Local vision service offline** → informative placeholder (no hard crash).
 - **No `OPENAI_API_KEY`** → deterministic offline chat/audit narratives.

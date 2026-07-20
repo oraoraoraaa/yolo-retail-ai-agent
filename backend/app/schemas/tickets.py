@@ -168,6 +168,9 @@ class ClosedLoopRunResult(CamelModel):
     skipped: list[dict[str, Any]]
     # Non-ticket notifications (e.g. low-stock warnings).
     notifications: list[dict[str, Any]] = []
+    # Findings held back this pass by temporal debounce (awaiting confirmation
+    # across more audits before a ticket is opened). Not errors.
+    debounced: list[dict[str, Any]] = []
 
 
 class VerifyTicketRequest(CamelModel):

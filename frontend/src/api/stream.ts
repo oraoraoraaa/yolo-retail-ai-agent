@@ -42,6 +42,32 @@ export interface DetectionResultItem {
   classId: number | null
   box: DetectionBox
   normalizedBox: Omit<DetectionBox, 'width' | 'height'>
+  /** True when this detection's box overlaps the motion mask (likely a person). */
+  obscured?: boolean
+}
+
+/** Normalized bounding box of a motion/occlusion blob in [0, 1]. */
+export interface OcclusionRegion {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+/**
+ * Temporal-occlusion metadata from a burst capture. When the view is obstructed
+ * (a customer standing in front of the camera) the backend suppresses a false
+ * camera_issue, and obscured facings are excluded from restock tickets.
+ */
+export interface OcclusionInfo {
+  coverage: number
+  viewObstructed: boolean
+  regions: OcclusionRegion[]
+  burstFrames: number
+  /** Downscaled recent-audit frames folded into the long-baseline clean plate. */
+  baselineFrames?: number
+  /** True when the adaptive burst extended its window because the view stayed busy. */
+  escalated?: boolean
 }
 
 export interface LocalDetectionResult {
@@ -51,7 +77,9 @@ export interface LocalDetectionResult {
     total: number
     gapCount: number
     productCount: number
+    obscuredCount?: number
   }
+  occlusion?: OcclusionInfo
   image: {
     width: number
     height: number

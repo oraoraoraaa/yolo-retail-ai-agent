@@ -24,6 +24,32 @@ The system operates in a continuous, three-step cycle:
 2. **Reasoning:** The AI Agent cross-references the visual detections against a real-time database or a digital store planogram.
 3. **Action:** The Agent automatically executes appropriate operations, such as generating supplier purchase orders, dispatching notifications to store staff, or dynamically adjusting prices based on supply and demand.
 
+### Robustness in a busy store
+
+The system needs a full view of the shelf to detect gaps — but the busiest
+stores (exactly the ones that most need auditing) constantly have customers
+walking between the camera and the shelf. A single snapshot of a shopper
+standing in front of a facing reads as a `Gap`, and one blocking the lens reads
+as zero detections (a false "camera broken" alert). To keep the audit
+trustworthy without a person-detection model, perception and reasoning are
+hardened with three cooperating layers:
+
+1. **Temporal clean plate.** Each audit captures a short burst of frames and
+   detects on their per-pixel median. Anyone who moves is a minority across the
+   window, so the composite resolves to the shelf behind them.
+2. **Occlusion gating.** A motion mask (frame differencing on the fixed camera)
+   flags regions that are still busy. Facings under the mask are marked
+   *obscured*, never *empty*, so they cannot open a restock ticket — and a
+   view mostly filled by motion is treated as "temporarily blocked," not a
+   broken camera.
+3. **Temporal debounce.** A finding must persist across several audits inside a
+   time window before it opens a ticket. A shopper walking past makes a gap
+   that vanishes next audit and is filtered; a genuinely empty shelf persists
+   and is ticketed. This trades a little latency for far higher precision.
+
+Implementation and tuning knobs: [`model-local/README.md`](../model-local/README.md)
+and [`backend/README.md`](../backend/README.md).
+
 ---
 
 ## 3. Structure

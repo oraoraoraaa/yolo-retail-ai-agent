@@ -78,6 +78,26 @@ frontend (:5173)
 
 Default weights: `train/export/gap-product-chinese-yolo11n.onnx`
 
+### Busy-store robustness
+
+Because the model needs the whole shelf in frame, customers walking past would
+otherwise read as gaps (or trip a false `camera_issue`). Layered suppression
+handles this, including slow/lingering shoppers who choose and pick items:
+
+- **Median clean plate** over a frame burst — moving shoppers vanish. The burst
+  is **adaptive** (extends its window while the view stays busy, stays fast when
+  the shelf is clear) and backed by a **long baseline** of recent audit frames,
+  so a shopper lingering at a facing is out-voted over minutes.
+- **Occlusion gating** — obscured facings are skipped, not ticketed; a blocked
+  lens is not reported as a broken camera.
+- **Temporal debounce** — a finding must be seen in several audits **and persist
+  across real wall-clock time** (`DEBOUNCE_MIN_SPAN_SECONDS`) before a ticket
+  opens, so a brief obstruction can't confirm a gap.
+
+Latency is intentionally not prioritized (a ~2-minute alarm is fine); a false
+alarm is not. Tunable via `DEBOUNCE_*` env vars and the burst constants — see
+[backend/README.md](backend/README.md) and [model-local/README.md](model-local/README.md).
+
 ## Dependency management
 
 All **Python** packages in this repo are managed with **[uv](https://docs.astral.sh/uv/)**:
@@ -105,7 +125,22 @@ Frontend remains **npm** (`frontend/`).
 
 ## Tests
 
+Each package is tested independently. Run the suite for whatever you touched
+(and the frontend build, which doubles as the type check):
+
+| Area | What it covers | Command |
+| --- | --- | --- |
+| Backend | Closed-loop tickets, temporal debounce + wall-clock persistence gate, webhooks, planogram match, backup/restore, RBAC, offline agent paths | `cd backend && uv run pytest` |
+| Model-local | Median clean plate, motion-occlusion mask, adaptive burst + long-baseline helpers (pure numpy/cv2 — no camera or weights needed) | `cd model-local && uv run pytest` |
+| Frontend | Typecheck + production build (no unit suite yet) | `cd frontend && npm run build` |
+| Training | Train/validate/eval CLIs, dataset merge, class-imbalance policy | `cd train && uv run pytest` |
+
+Run a single file or test while iterating, e.g.:
+
 ```bash
-cd backend && uv run pytest
-cd model-local && uv run pytest
+cd backend && uv run pytest tests/test_closed_loop.py -q
+cd model-local && uv run pytest tests/test_occlusion.py -q
 ```
+
+When you change retail-agent offline paths, the detector client, camera helpers,
+or the occlusion/debounce logic, run the matching suite before pushing.

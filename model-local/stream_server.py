@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,12 +20,19 @@ import numpy as np
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 from detection import (
+    VIEW_OBSTRUCTED_COVERAGE,
     camera_display_name,
+    detection_obscured,
+    downscale_frame,
     draw_predictions,
     get_detection_names,
+    median_clean_plate,
+    motion_occlusion_mask,
+    occlusion_regions,
     open_video_capture,
     parse_video_reference,
     probe_camera_index,
+    unify_frames,
 )
 
 DEFAULT_WEIGHTS = (
@@ -64,6 +72,57 @@ def load_model(weights: Path) -> object:
     return model
 
 
+# How many raw frames a live stream keeps in its ring buffer so on-demand
+# audits can build a temporal median "clean plate" from recent history instead
+# of a single (possibly occluded) snapshot.
+STREAM_RING_BUFFER_SIZE = 12
+# Defaults for a self-contained burst capture (used when the camera is NOT
+# already streaming): grab this many frames spaced this far apart.
+DEFAULT_BURST_FRAMES = 7
+DEFAULT_BURST_INTERVAL = 0.12
+
+# --- Adaptive occlusion-aware burst (Plan 1) ------------------------------
+# A quick burst clears customers who walk briskly past, but someone choosing /
+# picking items lingers over a facing for several seconds and survives a <1s
+# window. When the initial burst is still busy we escalate: keep grabbing
+# frames over a progressively longer window (a slow walker is a minority at any
+# given pixel over ~5s, so the median resolves to the shelf) up to a total time
+# budget, stopping early once the scene reads clean. Empty-shelf audits never
+# escalate, so they stay fast — latency cost is paid only when the view is busy.
+# Occlusion coverage at/above which we keep extending the burst.
+BURST_ESCALATE_COVERAGE = 0.15
+# Spacing between the extra escalation frames (wider than the initial burst so
+# the same total frame count spans more wall-clock time).
+BURST_ESCALATE_INTERVAL = 0.35
+# Hard ceiling on total burst wall-clock time (seconds) so a permanently busy
+# aisle cannot block an audit forever — it just ends up "obscured".
+BURST_MAX_SECONDS = 8.0
+# Absolute ceiling on frames captured in one adaptive burst (memory guard:
+# full-res frames are ~6MB at 1080p, so ~40 frames ≈ 240MB worst case).
+BURST_MAX_FRAMES = 40
+
+# --- Long-baseline clean plate from audit history (Plan 6) ----------------
+# Background cameras re-audit every N seconds. Retaining one DOWNSCALED frame
+# per audit gives a clean-plate baseline spanning minutes at trivial memory
+# cost (a customer is a guaranteed tiny minority at every pixel over minutes,
+# so the median is bulletproof) without holding the capture device open for a
+# long in-capture burst or buffering hundreds of full-res frames.
+#
+# Tradeoff to respect: the baseline median only flips to a NEW state once that
+# state is the majority of the window. Too long a window would delay a GENUINE
+# gap (product sells out and stays empty) because stale "product" frames keep
+# out-voting it. We therefore bound the window to ~the debounce window (180s):
+# long enough that a customer lingering/choosing at a facing (tens of seconds)
+# is a clear minority and is medianed away, but short enough that a real gap
+# becomes the majority — and thus visible to YOLO — within ~90s, which the
+# wall-clock span gate is going to wait out anyway. The two layers are tuned to
+# the same timescale on purpose.
+AUDIT_HISTORY_MAX_FRAMES = 18
+AUDIT_HISTORY_MAX_AGE_SECONDS = 180.0
+# Frames retained for the baseline are downscaled to this width to bound memory.
+AUDIT_HISTORY_FRAME_WIDTH = 640
+
+
 @dataclass
 class StreamOptions:
     camera: str = os.getenv("VIDEO_REFERENCE", "0")
@@ -74,6 +133,20 @@ class StreamOptions:
     device: str | None = None
     max_det: int = 300
     max_fps: float = 30
+    # Temporal anti-occlusion: number of frames to buffer/burst for the median
+    # clean plate. 1 disables it (single-snapshot behavior). Interval is the
+    # spacing (seconds) between burst frames when the camera is not streaming.
+    burst_frames: int = DEFAULT_BURST_FRAMES
+    burst_interval: float = DEFAULT_BURST_INTERVAL
+    # Adaptive escalation (Plan 1): when the initial burst is still occluded,
+    # keep grabbing frames over a longer window up to this time budget, stopping
+    # early once coverage drops below the escalation threshold. 0 disables
+    # escalation (fixed burst only). Only used for non-streaming captures.
+    burst_max_seconds: float = BURST_MAX_SECONDS
+    # Long-baseline clean plate (Plan 6): fold up to this many downscaled recent
+    # audit frames into the median so a slow/lingering customer is a minority
+    # over minutes, not just the sub-second burst. 0 disables the baseline.
+    use_audit_history: bool = True
 
 
 class DetectionStream:
@@ -84,6 +157,13 @@ class DetectionStream:
         self._worker: threading.Thread | None = None
         self._latest_jpeg: bytes | None = None
         self._latest_raw_frame: Any | None = None
+        # Rolling window of recent raw frames for temporal median clean-plate.
+        self._raw_frames: deque[Any] = deque(maxlen=STREAM_RING_BUFFER_SIZE)
+        # Long-baseline clean-plate history: one DOWNSCALED frame per audit with
+        # its capture time, spanning minutes at trivial memory cost (Plan 6).
+        self._audit_history: deque[tuple[float, Any]] = deque(
+            maxlen=AUDIT_HISTORY_MAX_FRAMES
+        )
         self._frame_id = 0
         self._model: object | None = None
         self._model_weights: Path | None = None
@@ -98,6 +178,8 @@ class DetectionStream:
             self._error = None
             self._latest_jpeg = None
             self._latest_raw_frame = None
+            self._raw_frames.clear()
+            self._audit_history.clear()
             self._frame_id = 0
             self._options = options
             self._stop_event = threading.Event()
@@ -124,6 +206,8 @@ class DetectionStream:
                 self._worker = None
                 self._latest_jpeg = None
                 self._latest_raw_frame = None
+                self._raw_frames.clear()
+                self._audit_history.clear()
                 self._frame_id = 0
                 self._status = "idle"
                 self._options = None
@@ -161,6 +245,45 @@ class DetectionStream:
             if self._latest_raw_frame is None:
                 return None
             return self._latest_raw_frame.copy()
+
+    def recent_raw_frames(self, count: int) -> list[Any]:
+        """Return copies of up to ``count`` most recent raw frames (newest last).
+
+        Used to build a temporal median clean plate for on-demand audits without
+        reopening the capture device the streaming worker already holds.
+        """
+        if count <= 0:
+            return []
+        with self._lock:
+            if not self._raw_frames:
+                return []
+            frames = list(self._raw_frames)[-count:]
+            return [frame.copy() for frame in frames]
+
+    def record_audit_frame(self, frame: Any) -> None:
+        """Store a downscaled copy of an audited frame for the long baseline.
+
+        Called after each audit so the median clean plate can draw on frames
+        spanning minutes (Plan 6). Frames are downscaled to bound memory.
+        """
+        if frame is None:
+            return
+        small = downscale_frame(frame, AUDIT_HISTORY_FRAME_WIDTH)
+        with self._lock:
+            self._audit_history.append((time.monotonic(), small.copy()))
+
+    def audit_history_frames(
+        self, *, max_age_seconds: float = AUDIT_HISTORY_MAX_AGE_SECONDS
+    ) -> list[Any]:
+        """Return copies of retained audit-history frames within the age window
+        (newest last). Powers the long-baseline clean plate."""
+        cutoff = time.monotonic() - max(0.0, max_age_seconds)
+        with self._lock:
+            return [
+                frame.copy()
+                for ts, frame in self._audit_history
+                if ts >= cutoff
+            ]
 
     def _load_model(self, weights: Path) -> object:
         weights = weights.expanduser().resolve()
@@ -218,8 +341,12 @@ class DetectionStream:
                     self._latest_jpeg = jpeg.tobytes()
                     # Retain the raw (un-annotated) frame so on-demand audits on a
                     # streaming camera can reuse it instead of fighting the running
-                    # worker for exclusive access to the capture device.
-                    self._latest_raw_frame = frame.copy()
+                    # worker for exclusive access to the capture device. The ring
+                    # buffer keeps a short history so audits can median several
+                    # frames into an occlusion-free clean plate.
+                    raw_copy = frame.copy()
+                    self._latest_raw_frame = raw_copy
+                    self._raw_frames.append(raw_copy)
                     self._frame_id += 1
                     self._status = "live"
                     self._frame_ready.notify_all()
@@ -303,6 +430,54 @@ class StreamRegistry:
 registry = StreamRegistry()
 
 
+class AuditHistoryStore:
+    """Per-camera long-baseline clean-plate history for NON-streaming cameras.
+
+    A streaming camera keeps its own baseline on its ``DetectionStream``, but a
+    background-audited camera that is not streaming has no persistent worker, so
+    this process-wide store retains one downscaled frame per audit per camera
+    (Plan 6). A slow / lingering customer is a tiny minority across the retained
+    minutes, so folding these into the median resolves the shelf behind them.
+    Thread-safe: several cameras audit concurrently.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._frames: dict[str, deque[tuple[float, Any]]] = {}
+
+    def record(self, camera: str, frame: Any) -> None:
+        if frame is None:
+            return
+        small = downscale_frame(frame, AUDIT_HISTORY_FRAME_WIDTH)
+        key = str(camera)
+        with self._lock:
+            buf = self._frames.get(key)
+            if buf is None:
+                buf = deque(maxlen=AUDIT_HISTORY_MAX_FRAMES)
+                self._frames[key] = buf
+            buf.append((time.monotonic(), small.copy()))
+
+    def get(
+        self, camera: str, *, max_age_seconds: float = AUDIT_HISTORY_MAX_AGE_SECONDS
+    ) -> list[Any]:
+        cutoff = time.monotonic() - max(0.0, max_age_seconds)
+        with self._lock:
+            buf = self._frames.get(str(camera))
+            if not buf:
+                return []
+            return [frame.copy() for ts, frame in buf if ts >= cutoff]
+
+    def clear(self, camera: str | None = None) -> None:
+        with self._lock:
+            if camera is None:
+                self._frames.clear()
+            else:
+                self._frames.pop(str(camera), None)
+
+
+_audit_history_store = AuditHistoryStore()
+
+
 def image_data_url(jpeg: bytes) -> str:
     encoded = base64.b64encode(jpeg).decode("ascii")
     return f"data:image/jpeg;base64,{encoded}"
@@ -351,10 +526,153 @@ def detection_payload(result: object | None, model: object, width: int, height: 
     return detections
 
 
-def run_detection(frame, options: StreamOptions) -> dict[str, Any]:
+def capture_burst(camera: str, count: int, interval: float) -> list[Any]:
+    """Open a camera, grab ``count`` frames spaced ``interval`` seconds apart.
+
+    Used when a camera is not already streaming (the common background-audit
+    case) so we can still build a temporal median clean plate instead of relying
+    on a single snapshot that a passing customer may have occluded.
+    """
+    frames: list[Any] = []
+    capture = None
+    try:
+        capture = open_video_capture(parse_video_reference(camera))
+        target = max(1, count)
+        for index in range(target):
+            ok, frame = capture.read()
+            if not ok:
+                break
+            frames.append(frame.copy())
+            if index < target - 1 and interval > 0:
+                time.sleep(interval)
+    finally:
+        if capture is not None:
+            capture.release()
+    if not frames:
+        raise RuntimeError(f"Failed to read a frame from {camera!r}.")
+    return frames
+
+
+def capture_burst_adaptive(
+    camera: str,
+    count: int,
+    interval: float,
+    *,
+    max_seconds: float = BURST_MAX_SECONDS,
+    escalate_coverage: float = BURST_ESCALATE_COVERAGE,
+    escalate_interval: float = BURST_ESCALATE_INTERVAL,
+    max_frames: int = BURST_MAX_FRAMES,
+) -> tuple[list[Any], bool]:
+    """Grab an initial burst; if it is still busy, keep extending the window.
+
+    A quick burst (``count`` frames × ``interval``) clears customers who walk
+    briskly past, but someone choosing / picking items lingers for several
+    seconds and survives a sub-second window. When the motion coverage of the
+    frames captured so far is at/above ``escalate_coverage`` we keep grabbing
+    additional frames spaced ``escalate_interval`` apart until either coverage
+    drops below the threshold ("clean enough"), the wall-clock ``max_seconds``
+    budget is exhausted, or ``max_frames`` is hit. Over ~5s a slow walker is a
+    minority at any pixel, so the median resolves to the shelf. Empty-shelf
+    audits read clean immediately and never escalate, staying fast.
+
+    Returns ``(frames, escalated)``. Opens the device once and holds it for the
+    whole window, so only used for cameras that are NOT already streaming.
+    """
+    frames: list[Any] = []
+    escalated = False
+    capture = None
+    try:
+        capture = open_video_capture(parse_video_reference(camera))
+        started = time.monotonic()
+        target = max(1, count)
+        for index in range(target):
+            ok, frame = capture.read()
+            if not ok:
+                break
+            frames.append(frame.copy())
+            if index < target - 1 and interval > 0:
+                time.sleep(interval)
+
+        # Escalation: extend the window while the scene stays busy and we have
+        # budget left. Skip entirely when escalation is disabled (max_seconds<=0)
+        # or the initial burst is too small to compute motion.
+        if max_seconds > 0 and len(frames) >= 2:
+            while (
+                len(frames) < max_frames
+                and (time.monotonic() - started) < max_seconds
+            ):
+                _, coverage = motion_occlusion_mask(frames)
+                if coverage < escalate_coverage:
+                    break  # clean enough — stop early
+                escalated = True
+                if escalate_interval > 0:
+                    time.sleep(escalate_interval)
+                ok, frame = capture.read()
+                if not ok:
+                    break
+                frames.append(frame.copy())
+    finally:
+        if capture is not None:
+            capture.release()
+    if not frames:
+        raise RuntimeError(f"Failed to read a frame from {camera!r}.")
+    return frames, escalated
+
+
+def run_detection(
+    frame,
+    options: StreamOptions,
+    *,
+    burst_frames: list[Any] | None = None,
+    baseline_frames: list[Any] | None = None,
+    escalated: bool = False,
+) -> dict[str, Any]:
+    """Run detection on a frame, optionally using a temporal clean plate.
+
+    When ``burst_frames`` holds 2+ frames, detection runs on their per-pixel
+    median (removing anyone who moved) and a motion mask flags detections /
+    regions that stayed occluded. The single ``frame`` is used as the display
+    fallback and shape reference.
+
+    ``baseline_frames`` are additional DOWNSCALED frames from recent audit
+    history (Plan 6, long-baseline clean plate). They are folded into the
+    median ONLY — never into the motion mask, which needs close-in-time frames
+    to detect movement — so a slow / lingering customer that survives the
+    sub-second burst is still out-voted by the minutes-long baseline in which
+    they are a tiny minority. The motion mask (and thus obscured flags / view
+    obstruction) is always computed from the close-in-time burst alone.
+    """
+    frames = [f for f in (burst_frames or []) if f is not None]
+    if not frames:
+        frames = [frame]
+
     model = load_model(options.weights)
+
+    # Occlusion mask ALWAYS from the close-in-time burst (movement needs
+    # adjacent-in-time frames; the long baseline would wash motion out).
+    mask, occlusion_coverage = motion_occlusion_mask(frames)
+    occlusion_boxes = occlusion_regions(mask)
+    view_obstructed = occlusion_coverage >= VIEW_OBSTRUCTED_COVERAGE
+
+    # Clean plate from burst + long baseline. Baseline frames may be a different
+    # (downscaled) resolution, so unify everything to a common shape first; the
+    # result is resized back to the burst's native resolution for detection so
+    # planogram coordinates and the annotated image keep full resolution.
+    native_h, native_w = frames[-1].shape[:2]
+    baseline = [f for f in (baseline_frames or []) if f is not None]
+    plate_source = frames + baseline
+    if len(plate_source) > 1:
+        unified = unify_frames(plate_source)
+        clean_plate = median_clean_plate(unified)
+        if clean_plate.shape[0] != native_h or clean_plate.shape[1] != native_w:
+            clean_plate = cv2.resize(
+                clean_plate, (native_w, native_h), interpolation=cv2.INTER_AREA
+            )
+    else:
+        clean_plate = frames[-1]
+
     results = model.predict(
-        source=frame,
+        source=clean_plate,
         imgsz=options.imgsz,
         conf=options.conf,
         iou=options.iou,
@@ -363,20 +681,43 @@ def run_detection(frame, options: StreamOptions) -> dict[str, Any]:
         verbose=False,
     )
     result = results[0] if results else None
-    annotated_frame = draw_predictions(result, frame, model) if result else frame
+    annotated_frame = draw_predictions(result, clean_plate, model) if result else clean_plate
     encoded, jpeg = cv2.imencode(".jpg", annotated_frame)
     if not encoded:
         raise RuntimeError("Could not encode annotated image.")
 
-    height, width = frame.shape[:2]
+    height, width = clean_plate.shape[:2]
     detections = detection_payload(result, model, width, height)
+
+    # Flag detections whose box overlaps the motion mask so the decision layer
+    # can treat those facings as obscured rather than genuinely empty.
+    obscured_count = 0
+    for det in detections:
+        box = det.get("box") or {}
+        is_obscured = detection_obscured(mask, box)
+        det["obscured"] = is_obscured
+        if is_obscured:
+            obscured_count += 1
+
+    gap_count = sum(1 for item in detections if "gap" in item["label"].lower())
+    product_count = sum(1 for item in detections if "gap" not in item["label"].lower())
+
     return {
         "annotatedImage": image_data_url(jpeg.tobytes()),
         "detections": detections,
         "summary": {
             "total": len(detections),
-            "gapCount": sum(1 for item in detections if "gap" in item["label"].lower()),
-            "productCount": sum(1 for item in detections if "gap" not in item["label"].lower()),
+            "gapCount": gap_count,
+            "productCount": product_count,
+            "obscuredCount": obscured_count,
+        },
+        "occlusion": {
+            "coverage": round(occlusion_coverage, 4),
+            "viewObstructed": view_obstructed,
+            "regions": occlusion_boxes,
+            "burstFrames": len(frames),
+            "baselineFrames": len(baseline),
+            "escalated": bool(escalated),
         },
         "image": {"width": width, "height": height},
         "model": str(options.weights.expanduser().resolve()),
@@ -424,6 +765,31 @@ def available_models() -> list[dict[str, str]]:
     return models
 
 
+def _coerce_float(*values: Any, default: float) -> float:
+    """First non-None value coerced to float, else ``default``. Tolerates junk."""
+    for value in values:
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return default
+
+
+def _coerce_bool(*values: Any, default: bool) -> bool:
+    """First non-None value coerced to bool, else ``default``."""
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    return default
+
+
 def parse_options(payload: dict[str, Any]) -> StreamOptions:
     return StreamOptions(
         camera=str(payload.get("camera") or os.getenv("VIDEO_REFERENCE", "0")),
@@ -434,6 +800,26 @@ def parse_options(payload: dict[str, Any]) -> StreamOptions:
         device=str(payload["device"]) if payload.get("device") else None,
         max_det=int(payload.get("maxDet") or payload.get("max_det") or 300),
         max_fps=float(payload.get("maxFps") or payload.get("max_fps") or 30),
+        burst_frames=int(
+            payload.get("burstFrames")
+            or payload.get("burst_frames")
+            or DEFAULT_BURST_FRAMES
+        ),
+        burst_interval=float(
+            payload.get("burstInterval")
+            or payload.get("burst_interval")
+            or DEFAULT_BURST_INTERVAL
+        ),
+        burst_max_seconds=_coerce_float(
+            payload.get("burstMaxSeconds"),
+            payload.get("burst_max_seconds"),
+            default=BURST_MAX_SECONDS,
+        ),
+        use_audit_history=_coerce_bool(
+            payload.get("useAuditHistory"),
+            payload.get("use_audit_history"),
+            default=True,
+        ),
     )
 
 
@@ -568,36 +954,70 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
         payload = self._read_json()
         options = parse_options(payload)
 
-        # If this camera is already streaming, reuse the latest live frame so we
-        # do not have to reopen the capture device (which a single worker already
-        # holds). This is what lets a camera stream and audit at the same time.
+        # If this camera is already streaming, reuse recent live frames from its
+        # ring buffer so we do not reopen the capture device (which the worker
+        # already holds). A short burst lets us median out anyone who moved, and
+        # the long-baseline audit history clears slow / lingering customers.
         active = registry.get(options.camera)
         if active is not None:
-            frame = active.latest_raw_frame()
-            if frame is not None:
+            frames = active.recent_raw_frames(options.burst_frames)
+            if not frames:
+                latest = active.latest_raw_frame()
+                frames = [latest] if latest is not None else []
+            if frames:
+                baseline = (
+                    active.audit_history_frames()
+                    if options.use_audit_history
+                    else []
+                )
                 try:
-                    result = run_detection(frame, options)
+                    result = run_detection(
+                        frames[-1],
+                        options,
+                        burst_frames=frames,
+                        baseline_frames=baseline,
+                    )
                     result["camera"] = options.camera
+                    # Fold this audit's frame into the long baseline for next time.
+                    if options.use_audit_history:
+                        active.record_audit_frame(frames[-1])
                 except Exception as exc:
                     self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                     return
                 self._send_json(result)
                 return
 
-        capture = None
+        # Not streaming: grab a self-contained burst and median it into a clean
+        # plate so a passing customer does not trip a false gap / camera_issue.
+        # The burst escalates over a longer window when the view is still busy
+        # (a customer choosing / picking items), while empty-shelf audits read
+        # clean immediately and stay fast. A per-camera baseline of recent audit
+        # frames extends the clean plate to span minutes.
         try:
-            capture = open_video_capture(parse_video_reference(options.camera))
-            ok, frame = capture.read()
-            if not ok:
-                raise RuntimeError(f"Failed to read a frame from {options.camera!r}.")
-            result = run_detection(frame, options)
+            frames, escalated = capture_burst_adaptive(
+                options.camera,
+                options.burst_frames,
+                options.burst_interval,
+                max_seconds=options.burst_max_seconds,
+            )
+            baseline = (
+                _audit_history_store.get(options.camera)
+                if options.use_audit_history
+                else []
+            )
+            result = run_detection(
+                frames[-1],
+                options,
+                burst_frames=frames,
+                baseline_frames=baseline,
+                escalated=escalated,
+            )
             result["camera"] = options.camera
+            if options.use_audit_history:
+                _audit_history_store.record(options.camera, frames[-1])
         except Exception as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
-        finally:
-            if capture is not None:
-                capture.release()
 
         self._send_json(result)
 

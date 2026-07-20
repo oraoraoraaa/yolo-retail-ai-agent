@@ -44,11 +44,18 @@ All vision requests go to `model-local` (local ONNX/YOLO weights under `train/ex
 - `GET /api/v1/stream/video` — MJPEG stream for the browser viewer.
 - `POST /api/v1/stream/stop` — stop the active camera stream.
 - `POST /api/v1/detect/image` — JSON image payload → annotated image + detection JSON.
-- `POST /api/v1/detect/capture` — JSON `{ camera, model }` → one camera capture detection.
+- `POST /api/v1/detect/capture` — JSON `{ camera, model }` → camera capture detection.
+  Detects on a **median clean plate** from a short frame burst (removes passing
+  shoppers) and returns an `occlusion` block + per-detection `obscured` flags.
+  Optional `burstFrames` / `burstInterval` tune the burst (`burstFrames: 1`
+  disables it). Types live in `src/api/stream.ts` (`LocalDetectionResult`,
+  `OcclusionInfo`).
 
 The Shelf Audit agent step sends local detector JSON (and optional image base64)
 to the backend `POST /api/v1/audit/analyze-detections`, which persists the
-audit and returns `{ suggestedAction, explanation, recordId }`.
+audit and returns `{ suggestedAction, explanation, recordId }`. Obscured facings
+are excluded from restock tickets, and the backend debounces findings across
+audits so a customer walking past never opens a false ticket.
 
 Vite also proxies `/api` → `http://localhost:8000` during local development when you switch the client to relative paths later.
 

@@ -84,4 +84,13 @@ class PlanogramMatchResult(CamelModel):
     matches: list[dict[str, Any]] = Field(default_factory=list)
     gap_matches: list[dict[str, Any]] = Field(default_factory=list)
     missing_items: list[dict[str, Any]] = Field(default_factory=list)
+    # Facings currently occluded (e.g. a customer standing in front); these are
+    # deliberately excluded from missing_items so they cannot open false tickets.
+    obscured_matches: list[dict[str, Any]] = Field(default_factory=list)
+    # Planogram slots whose recorded stock is 0 (or below), regardless of whether
+    # a gap was detected on the shelf. Out-of-stock is planogram ground truth
+    # (staff-entered stock), so the backroom replenishment ticket must fire from
+    # this list even when the camera sees no gap (e.g. the last unit is still on
+    # the shelf but inventory is exhausted, or the facing is occluded).
+    out_of_stock_slots: list[dict[str, Any]] = Field(default_factory=list)
     summary: str = ""

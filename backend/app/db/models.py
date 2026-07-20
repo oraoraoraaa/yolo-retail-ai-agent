@@ -81,6 +81,27 @@ class AppSettingRow(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
 
+class FindingObservationRow(Base):
+    """A single observation of a shelf finding, keyed by its fingerprint.
+
+    Powers temporal debounce (Plan C): a finding must be seen in at least M of
+    the last K audits within a time window before it is allowed to open a
+    ticket. A customer walking past makes a gap that vanishes on the next audit
+    → filtered; a genuinely empty shelf persists → ticketed.
+    """
+
+    __tablename__ = "finding_observations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    issue_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Optional grouping so unrelated cameras/shelves don't share a debounce window.
+    source_key: Mapped[str] = mapped_column(String(255), nullable=False, default="", index=True)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
+    )
+
+
 class TicketRow(Base):
     """Action ticket produced by the closed-loop retail agent."""
 

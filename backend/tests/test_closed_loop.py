@@ -8,11 +8,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.db.session import dispose_engine, init_db
 from app.main import app
 from app.schemas.tickets import WebhookEndpoint, WebhookProviderConfig, WebhookSettings
 from app.services.closed_loop import extract_findings, get_closed_loop_agent, reset_closed_loop_agent
+from app.services.observation_store import get_observation_store, reset_observation_store
 from app.services.ticket_store import get_ticket_store, reset_ticket_store
 from app.services.webhooks import (
     build_webhook_body,
@@ -32,6 +34,12 @@ def _clean_singletons(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     )
     monkeypatch.setenv("AUTH_ENABLED", "false")
     monkeypatch.setenv("AUTH_SECRET", "test-secret-at-least-32-bytes-long!!")
+    # Disable temporal debounce by default so existing finding→ticket tests see
+    # a ticket on the first audit. Debounce-specific tests opt back in.
+    monkeypatch.setenv("DEBOUNCE_MIN_OBSERVATIONS", "1")
+    # Disable the wall-clock persistence gate by default so rapid-fire test
+    # audits (milliseconds apart) still confirm. Span-specific tests opt back in.
+    monkeypatch.setenv("DEBOUNCE_MIN_SPAN_SECONDS", "0")
     data_dir = tmp_path / "data"
     media_dir = data_dir / "media"
     db_path = data_dir / "test.db"
@@ -50,6 +58,7 @@ def _clean_singletons(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     reset_detector()
     reset_store()
     reset_ticket_store()
+    reset_observation_store()
     reset_closed_loop_agent()
 
     import app.services.agent as agent_mod
@@ -66,6 +75,7 @@ def _clean_singletons(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     reset_detector()
     reset_store()
     reset_ticket_store()
+    reset_observation_store()
     reset_closed_loop_agent()
     agent_mod._agent = None
     planogram_mod._store = None
@@ -571,6 +581,98 @@ async def test_empty_facing_backroom_only_and_announce_once(
     )
 
 
+def test_extract_findings_out_of_stock_without_gap() -> None:
+    """A planogram slot with stock 0 opens a backroom OOS finding even when NO
+    gap was detected on the shelf (out-of-stock is planogram ground truth)."""
+    # Vision sees only a product (no gap at all).
+    vision = _vision(total=1, gaps=0, products=1)
+    planogram = {
+        "planogramId": "pg-oos",
+        "planogramName": "Bay OOS",
+        "missingItems": [],  # no gap matched
+        "matches": [],
+        "outOfStockSlots": [
+            {"slotId": "s1", "itemName": "Cola", "sku": "C-1", "itemStock": 0},
+        ],
+    }
+    findings = extract_findings(vision, planogram, language="en")
+    oos = [f for f in findings if f.issue_type == "out_of_stock"]
+    assert len(oos) == 1
+    assert oos[0].assignee_role == "backroom"
+    assert oos[0].evidence.get("gapDetected") is False
+    assert oos[0].announce is True
+
+
+def test_out_of_stock_no_gap_dedupes_across_audits() -> None:
+    """The same out-of-stock SKU must not open a second ticket on re-audit."""
+    vision = _vision(total=1, gaps=0, products=1)
+    planogram = {
+        "planogramId": "pg-oos2",
+        "planogramName": "Bay OOS2",
+        "missingItems": [],
+        "matches": [],
+        "outOfStockSlots": [
+            {"slotId": "s1", "itemName": "Juice", "sku": "J-9", "itemStock": 0},
+        ],
+    }
+    first = extract_findings(vision, planogram, language="en")
+    second = extract_findings(vision, planogram, language="en")
+    # Both audits produce a finding with the SAME fingerprint → ticket dedupe.
+    fp_first = next(f.fingerprint for f in first if f.issue_type == "out_of_stock")
+    fp_second = next(f.fingerprint for f in second if f.issue_type == "out_of_stock")
+    assert fp_first == fp_second
+
+
+@pytest.mark.asyncio
+async def test_out_of_stock_no_gap_single_ticket_and_immediate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OOS without a gap opens exactly one backroom ticket, immediately (bypasses
+    debounce), and re-audit does not open a duplicate."""
+    # Turn debounce ON to prove OOS bypasses it.
+    monkeypatch.setenv("DEBOUNCE_MIN_OBSERVATIONS", "2")
+    monkeypatch.setenv("DEBOUNCE_MIN_SPAN_SECONDS", "90")
+    from app.config import reset_settings
+
+    reset_settings()
+    reset_closed_loop_agent()
+
+    async def fake_dispatch(ticket, settings=None, **kwargs):  # type: ignore[no-untyped-def]
+        return {"ok": True, "channel": "slack", "ticketId": ticket.id, "skipped": False}
+
+    async def fake_notify(**kwargs):  # type: ignore[no-untyped-def]
+        return {"ok": True, "skipped": False, "issueType": kwargs.get("issue_type")}
+
+    monkeypatch.setattr("app.services.closed_loop.dispatch_ticket", fake_dispatch)
+    monkeypatch.setattr("app.services.closed_loop.dispatch_notification", fake_notify)
+
+    vision = _vision(total=2, gaps=0, products=2)
+    planogram = {
+        "planogramId": "pg-oos3",
+        "planogramName": "Bay OOS3",
+        "missingItems": [],
+        "matches": [],
+        "outOfStockSlots": [
+            {"slotId": "s1", "itemName": "Milk", "sku": "M-1", "itemStock": 0},
+        ],
+    }
+    agent = get_closed_loop_agent()
+
+    # First audit: OOS opens immediately despite min observations = 2.
+    first = await agent.run(
+        vision, planogram, language="en", source_label="camera:oos", dispatch=True, dedupe=True
+    )
+    oos_created = [t for t in first.tickets_created if t.issue_type == "out_of_stock"]
+    assert len(oos_created) == 1
+    assert oos_created[0].assignee_role == "backroom"
+
+    # Second audit: same SKU still out of stock → no duplicate ticket.
+    second = await agent.run(
+        vision, planogram, language="en", source_label="camera:oos", dispatch=True, dedupe=True
+    )
+    assert not any(t.issue_type == "out_of_stock" for t in second.tickets_created)
+
+
 def test_gap_with_stock_still_floor_staff() -> None:
     """A matched gap whose planogram stock is > 0 stays a floor_staff task."""
     vision = _vision(total=1, gaps=1, products=0)
@@ -589,3 +691,335 @@ def test_gap_with_stock_still_floor_staff() -> None:
     shelf = next(f for f in findings if f.issue_type == "shelf_empty")
     assert shelf.assignee_role == "floor_staff"
     assert shelf.announce is False
+
+
+# ---------------------------------------------------------------------------
+# Plan B — occlusion-aware gating
+# ---------------------------------------------------------------------------
+
+
+def test_camera_issue_suppressed_when_view_obstructed() -> None:
+    """A customer standing in front of the lens (view obstructed) is not a
+    broken camera — no camera_issue finding should fire."""
+    vision = _vision(total=0, gaps=0, products=0)
+    vision["occlusion"] = {"viewObstructed": True, "coverage": 0.6, "regions": []}
+    findings = extract_findings(vision, None, language="en")
+    assert not any(f.issue_type == "camera_issue" for f in findings)
+
+
+def test_camera_issue_still_fires_when_view_clear() -> None:
+    """No detections AND a clear view is a genuine camera problem."""
+    vision = _vision(total=0, gaps=0, products=0)
+    vision["occlusion"] = {"viewObstructed": False, "coverage": 0.0, "regions": []}
+    findings = extract_findings(vision, None, language="en")
+    assert any(f.issue_type == "camera_issue" for f in findings)
+
+
+def test_obscured_gap_not_reported_missing() -> None:
+    """A gap detection flagged obscured must not become a missing item."""
+    from app.schemas.planogram import Planogram, PlanogramSlot
+    from app.services.planogram_match import match_planogram
+
+    planogram = Planogram(
+        id="pg-occ",
+        name="Bay Occ",
+        slots=[
+            PlanogramSlot(
+                id="s1", x=0.05, y=0.05, width=0.2, height=0.3,
+                item_name="Water", sku="W-1", item_stock=5,
+            ),
+        ],
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+    )
+    vision = {
+        "image": {"width": 100, "height": 100},
+        "detections": [
+            {
+                "label": "gap",
+                "confidence": 0.9,
+                "obscured": True,
+                "box": {"x1": 5, "y1": 5, "x2": 25, "y2": 35},
+                "normalizedBox": {"x1": 0.05, "y1": 0.05, "x2": 0.25, "y2": 0.35},
+            }
+        ],
+    }
+    result = match_planogram(planogram, vision)
+    assert result.missing_items == []
+    assert result.obscured_matches
+    assert result.obscured_matches[0]["slotId"] == "s1"
+
+
+def test_slot_center_in_occlusion_region_marked_obscured() -> None:
+    """A slot whose center lies inside a reported occlusion region is obscured
+    even when the model produced no detection there (fully covered facing)."""
+    from app.schemas.planogram import Planogram, PlanogramSlot
+    from app.services.planogram_match import match_planogram
+
+    planogram = Planogram(
+        id="pg-cov",
+        name="Bay Cover",
+        slots=[
+            PlanogramSlot(
+                id="s1", x=0.4, y=0.4, width=0.2, height=0.2,
+                item_name="Juice", sku="J-1", item_stock=3,
+            ),
+        ],
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+    )
+    vision = {
+        "image": {"width": 100, "height": 100},
+        "detections": [],
+        "occlusion": {
+            "viewObstructed": False,
+            "coverage": 0.1,
+            "regions": [{"x1": 0.35, "y1": 0.35, "x2": 0.65, "y2": 0.65}],
+        },
+    }
+    result = match_planogram(planogram, vision)
+    assert result.missing_items == []
+    assert any(m["slotId"] == "s1" for m in result.obscured_matches)
+
+
+# ---------------------------------------------------------------------------
+# Plan C — temporal debounce (M-of-K persistence)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_debounce_holds_ticket_until_confirmed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With min observations = 2, a single-audit gap is held back; a second
+    audit confirms it and opens the ticket."""
+    monkeypatch.setenv("DEBOUNCE_MIN_OBSERVATIONS", "2")
+    monkeypatch.setenv("DEBOUNCE_WINDOW_SECONDS", "180")
+    from app.config import reset_settings
+
+    reset_settings()
+    reset_closed_loop_agent()
+
+    async def fake_dispatch(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"ok": True, "channel": "slack", "endpointName": "test"}
+
+    monkeypatch.setattr("app.services.closed_loop.dispatch_ticket", fake_dispatch)
+
+    vision = _vision(total=1, gaps=1, products=0)
+    planogram = {
+        "planogramId": "pg-deb",
+        "planogramName": "Bay D",
+        "missingItems": [
+            {"slotId": "s1", "itemName": "Chips", "sku": "CH-1", "itemStock": 8},
+        ],
+        "matches": [],
+    }
+
+    agent = get_closed_loop_agent()
+
+    # First audit: finding seen once → held back, no ticket.
+    first = await agent.run(
+        vision, planogram, language="en", source_label="camera:1", dispatch=True, dedupe=True
+    )
+    assert not first.tickets_created
+    assert first.debounced
+    assert first.debounced[0]["observations"] == 1
+    assert first.debounced[0]["required"] == 2
+
+    # Second audit: confirmed → ticket opens.
+    second = await agent.run(
+        vision, planogram, language="en", source_label="camera:1", dispatch=True, dedupe=True
+    )
+    assert len(second.tickets_created) == 1
+    assert second.tickets_created[0].issue_type == "shelf_empty"
+
+
+@pytest.mark.asyncio
+async def test_debounce_transient_gap_never_ticketed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A gap that appears once then disappears (customer walking past) never
+    accumulates enough observations, so no ticket is ever opened."""
+    monkeypatch.setenv("DEBOUNCE_MIN_OBSERVATIONS", "2")
+    monkeypatch.setenv("DEBOUNCE_WINDOW_SECONDS", "180")
+    from app.config import reset_settings
+
+    reset_settings()
+    reset_closed_loop_agent()
+
+    gap_vision = _vision(total=1, gaps=1, products=0)
+    clear_vision = _vision(total=2, gaps=0, products=2)
+    planogram = {
+        "planogramId": "pg-trans",
+        "planogramName": "Bay T",
+        "missingItems": [
+            {"slotId": "s1", "itemName": "Soda", "sku": "S-1", "itemStock": 8},
+        ],
+        "matches": [],
+    }
+    clear_planogram = {
+        "planogramId": "pg-trans",
+        "planogramName": "Bay T",
+        "missingItems": [],
+        "matches": [],
+    }
+
+    agent = get_closed_loop_agent()
+
+    first = await agent.run(
+        gap_vision, planogram, language="en", source_label="camera:2", dispatch=False, dedupe=True
+    )
+    assert not first.tickets_created
+
+    # Next audit the gap is gone (person moved on) → no shelf_empty finding.
+    second = await agent.run(
+        clear_vision, clear_planogram, language="en", source_label="camera:2", dispatch=False, dedupe=True
+    )
+    assert not second.tickets_created
+    assert not any(t.issue_type == "shelf_empty" for t in second.tickets_created)
+
+
+@pytest.mark.asyncio
+async def test_debounce_disabled_opens_immediately(monkeypatch: pytest.MonkeyPatch) -> None:
+    """min observations = 1 (the fixture default) opens on the first audit."""
+    from app.config import reset_settings
+
+    reset_settings()
+    reset_closed_loop_agent()
+
+    vision = _vision(total=1, gaps=1, products=0)
+    planogram = {
+        "planogramId": "pg-now",
+        "planogramName": "Bay N",
+        "missingItems": [
+            {"slotId": "s1", "itemName": "Milk", "sku": "M-1", "itemStock": 4},
+        ],
+        "matches": [],
+    }
+    agent = get_closed_loop_agent()
+    result = await agent.run(
+        vision, planogram, language="en", source_label="camera:3", dispatch=False, dedupe=True
+    )
+    assert len(result.tickets_created) == 1
+    assert not result.debounced
+
+
+def test_observation_store_scopes_by_source() -> None:
+    """count_recent scoped by source_key must not sum across cameras."""
+    store = get_observation_store()
+    store.record("fp-x", "camera_issue", source_key="camera:A")
+    store.record("fp-x", "camera_issue", source_key="camera:B")
+    assert store.count_recent("fp-x", window_seconds=180, source_key="camera:A") == 1
+    assert store.count_recent("fp-x", window_seconds=180, source_key="camera:B") == 1
+    # Unscoped spans all sources.
+    assert store.count_recent("fp-x", window_seconds=180) == 2
+
+
+def _backdate_observations(fingerprint: str, seconds_ago: float) -> None:
+    """Shift every observation of ``fingerprint`` back in time so a test can
+    simulate wall-clock persistence without sleeping."""
+    from datetime import timedelta
+
+    from app.db.models import FindingObservationRow
+    from app.db.session import get_session
+    from app.services.observation_store import _utcnow
+
+    cutoff = _utcnow() - timedelta(seconds=seconds_ago)
+    with get_session() as session:
+        rows = session.scalars(
+            select(FindingObservationRow).where(
+                FindingObservationRow.fingerprint == fingerprint
+            )
+        ).all()
+        for row in rows:
+            row.observed_at = cutoff
+
+
+def test_observation_store_span_seconds() -> None:
+    """span_seconds reports the wall-clock gap between oldest and newest obs."""
+    store = get_observation_store()
+    # A single observation has no span.
+    store.record("fp-span", "shelf_empty", source_key="camera:S")
+    assert store.span_seconds("fp-span", window_seconds=180, source_key="camera:S") == 0.0
+    # Backdate the first observation, then record a second → span opens up.
+    _backdate_observations("fp-span", 120)
+    store.record("fp-span", "shelf_empty", source_key="camera:S")
+    span = store.span_seconds("fp-span", window_seconds=180, source_key="camera:S")
+    assert span >= 100  # ~120s minus test jitter
+
+
+@pytest.mark.asyncio
+async def test_debounce_span_gate_holds_rapid_audits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two rapid-fire audits satisfy the observation count but NOT the wall-clock
+    span, so the finding is still held (busy-store slow-walker defense)."""
+    monkeypatch.setenv("DEBOUNCE_MIN_OBSERVATIONS", "2")
+    monkeypatch.setenv("DEBOUNCE_WINDOW_SECONDS", "180")
+    monkeypatch.setenv("DEBOUNCE_MIN_SPAN_SECONDS", "90")
+    from app.config import reset_settings
+
+    reset_settings()
+    reset_closed_loop_agent()
+
+    vision = _vision(total=1, gaps=1, products=0)
+    planogram = {
+        "planogramId": "pg-span",
+        "planogramName": "Bay S",
+        "missingItems": [
+            {"slotId": "s1", "itemName": "Chips", "sku": "CH-1", "itemStock": 8},
+        ],
+        "matches": [],
+    }
+    agent = get_closed_loop_agent()
+
+    first = await agent.run(
+        vision, planogram, language="en", source_label="camera:span", dispatch=False, dedupe=True
+    )
+    assert not first.tickets_created  # count 1/2
+
+    second = await agent.run(
+        vision, planogram, language="en", source_label="camera:span", dispatch=False, dedupe=True
+    )
+    # Count is now satisfied (2/2) but the two audits are milliseconds apart, so
+    # the span gate (90s) still holds the ticket back.
+    assert not second.tickets_created
+    assert second.debounced
+    assert second.debounced[0]["observations"] >= 2
+    assert second.debounced[0]["requiredSpanSeconds"] == 90
+
+
+@pytest.mark.asyncio
+async def test_debounce_span_gate_confirms_after_persistence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once the finding has persisted across the required wall-clock span (and
+    met the observation count), the ticket finally opens."""
+    monkeypatch.setenv("DEBOUNCE_MIN_OBSERVATIONS", "2")
+    monkeypatch.setenv("DEBOUNCE_WINDOW_SECONDS", "600")
+    monkeypatch.setenv("DEBOUNCE_MIN_SPAN_SECONDS", "90")
+    from app.config import reset_settings
+
+    reset_settings()
+    reset_closed_loop_agent()
+
+    vision = _vision(total=1, gaps=1, products=0)
+    planogram = {
+        "planogramId": "pg-persist",
+        "planogramName": "Bay P",
+        "missingItems": [
+            {"slotId": "s1", "itemName": "Soda", "sku": "S-1", "itemStock": 8},
+        ],
+        "matches": [],
+    }
+    agent = get_closed_loop_agent()
+
+    first = await agent.run(
+        vision, planogram, language="en", source_label="camera:persist", dispatch=False, dedupe=True
+    )
+    assert not first.tickets_created
+
+    # Simulate real elapsed time: backdate the recorded observation ~2 minutes.
+    fingerprint = first.debounced[0]["fingerprint"]
+    _backdate_observations(fingerprint, 120)
+
+    # A later audit still sees the gap → count 2, span ~120s ≥ 90s → ticket opens.
+    second = await agent.run(
+        vision, planogram, language="en", source_label="camera:persist", dispatch=False, dedupe=True
+    )
+    assert len(second.tickets_created) == 1
+    assert second.tickets_created[0].issue_type == "shelf_empty"

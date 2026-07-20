@@ -22,6 +22,7 @@ from app.schemas.tickets import (
     TicketPriority,
     VerifyTicketResult,
 )
+from app.services.observation_store import ObservationStore, get_observation_store
 from app.services.ticket_store import TicketStore, get_ticket_store
 from app.services.webhooks import (
     dispatch_notification,
@@ -141,6 +142,96 @@ def _sku_key(sku: str | None, item_name: str | None = None, slot_id: str | None 
     return "unknown"
 
 
+def _make_oos_finding(
+    *,
+    settings: Any,
+    zh: bool,
+    label: str,
+    sku: str | None,
+    item_name: str | None,
+    shelf: str | None,
+    planogram_id_str: str | None,
+    slot_id: str | None,
+    slot_ids: list[str],
+    key: str,
+    facing_count: int,
+    stock: float | None,
+    evidence_items: list[dict[str, Any]],
+    gap_detected: bool,
+) -> Finding:
+    """Build the single backroom out_of_stock finding for one SKU.
+
+    Used by BOTH the gap-matched empty-facing path and the planogram-driven path
+    (stock <= 0 with no gap detected). The fingerprint is identical in both —
+    ``(out_of_stock, planogram_id, sku_key)`` — so whichever path fires first
+    opens the ticket and the other dedupes against it: the same out-of-stock SKU
+    never produces two tickets. Announcement wording differs slightly depending
+    on whether a gap was actually seen on the shelf.
+    """
+    oos_roles = _roles_for_issue("out_of_stock", settings)
+    oos_title = f"缺货：{label}" if zh else f"Out of stock: {label}"
+    if gap_detected:
+        oos_desc = (
+            f"商品「{label}」计划库存为 0（{facing_count} 个 facing 为空）。请后仓补货或订货。"
+            if zh
+            else f"Item '{label}' planogram stock is 0 "
+            f"({facing_count} empty facing(s)). Restock from backroom or reorder."
+        )
+        announce_desc = (
+            f"「{label}」的空位已匹配到计划图，库存为 0，已派单给后仓补货。"
+            f"（货架：{shelf or '—'}，{facing_count} 个 facing）"
+            if zh
+            else f"The empty facing for '{label}' matches the planogram and stock is 0. "
+            f"A backroom replenishment ticket has been dispatched. "
+            f"(Shelf: {shelf or '—'}, {facing_count} facing(s).)"
+        )
+    else:
+        # Stock exhausted per the planogram even though no gap was detected
+        # (last unit still on the shelf, or facing occluded this frame).
+        oos_desc = (
+            f"商品「{label}」计划库存为 0，需后仓补货或订货（本次未检测到货架空位）。"
+            if zh
+            else f"Item '{label}' planogram stock is 0 and needs backroom "
+            f"replenishment or reorder (no shelf gap was detected this audit)."
+        )
+        announce_desc = (
+            f"「{label}」计划库存为 0，已派单给后仓补货。（货架：{shelf or '—'}）"
+            if zh
+            else f"'{label}' is out of stock per the planogram; a backroom "
+            f"replenishment ticket has been dispatched. (Shelf: {shelf or '—'}.)"
+        )
+    announce_roles = _roles_for_issue("shelf_empty_announcement", settings)
+    announce_title = (
+        f"货架空位待补货：{label}" if zh else f"Empty facing awaiting replenishment: {label}"
+    )
+    return Finding(
+        issue_type="out_of_stock",
+        priority="critical",
+        assignee_role=oos_roles[0],
+        assignee_roles=oos_roles,
+        title=oos_title,
+        description=oos_desc,
+        sku=sku,
+        item_name=item_name,
+        shelf_label=shelf,
+        planogram_id=planogram_id_str,
+        slot_id=slot_id,
+        evidence={
+            "outOfStockSlots" if not gap_detected else "missingItems": evidence_items,
+            "facingCount": facing_count,
+            "planogramStock": stock,
+            "slotIds": slot_ids,
+            "assigneeRoles": oos_roles,
+            "gapDetected": gap_detected,
+        },
+        fingerprint=_fingerprint("out_of_stock", planogram_id_str, key),
+        announce=True,
+        announce_title=announce_title,
+        announce_description=announce_desc,
+        announce_roles=announce_roles,
+    )
+
+
 def extract_findings(
     vision_model_response: dict[str, Any],
     planogram_response: dict[str, Any] | None,
@@ -199,6 +290,21 @@ def extract_findings(
         except (TypeError, ValueError):
             product_count = max(0, total - gap_count)
 
+    # Occlusion signal from the vision layer (Plan B). When a customer stands
+    # in front of the camera the whole view is "obstructed"; that is NOT a
+    # broken camera, so we must not fire camera_issue for it.
+    occlusion = vision_model_response.get("occlusion") or {}
+    view_obstructed = False
+    obscured_count = 0
+    if isinstance(occlusion, dict):
+        view_obstructed = bool(occlusion.get("viewObstructed"))
+    raw_obscured = summary.get("obscuredCount")
+    if raw_obscured is not None:
+        try:
+            obscured_count = int(raw_obscured)
+        except (TypeError, ValueError):
+            obscured_count = 0
+
     planogram_id = None
     planogram_name = source_label or ""
     missing_items: list[dict[str, Any]] = []
@@ -218,14 +324,89 @@ def extract_findings(
             or []
         )
         matches = list(planogram_response.get("matches") or [])
+        out_of_stock_slots = list(
+            planogram_response.get("outOfStockSlots")
+            or planogram_response.get("out_of_stock_slots")
+            or []
+        )
+    else:
+        out_of_stock_slots = []
 
     findings: list[Finding] = []
     zh = language == "zh"
     shelf = str(planogram_name or source_label or "").strip() or None
     planogram_id_str = str(planogram_id) if planogram_id else None
 
-    # 1) Camera issue — few/no detections
-    if total == 0 or (product_count == 0 and gap_count == 0):
+    def _append_planogram_out_of_stock() -> None:
+        """Emit backroom OOS findings from planogram ground truth (stock <= 0),
+        independent of any gap detection. SKUs already emitted as out_of_stock
+        (by the gap-matched path) share the same fingerprint and are skipped, so
+        the same SKU never produces two tickets. Safe to call once per run."""
+        already_oos_keys = {
+            _sku_key(f.sku, f.item_name, f.slot_id)
+            for f in findings
+            if f.issue_type == "out_of_stock"
+        }
+        oos_by_sku: dict[str, dict[str, Any]] = {}
+        for slot in out_of_stock_slots:
+            if not isinstance(slot, dict):
+                continue
+            oos_name = str(slot.get("itemName") or slot.get("item_name") or "").strip() or None
+            oos_sku = str(slot.get("sku") or "").strip() or None
+            oos_slot_id = str(slot.get("slotId") or slot.get("slot_id") or "").strip() or None
+            if not (oos_name or oos_sku):
+                continue
+            oos_key = _sku_key(oos_sku, oos_name, oos_slot_id)
+            existing = oos_by_sku.get(oos_key)
+            if existing is None:
+                oos_by_sku[oos_key] = {
+                    "sku": oos_sku,
+                    "item_name": oos_name,
+                    "slot_ids": [oos_slot_id] if oos_slot_id else [],
+                    "slots": [slot],
+                }
+            else:
+                if oos_slot_id and oos_slot_id not in existing["slot_ids"]:
+                    existing["slot_ids"].append(oos_slot_id)
+                existing["slots"].append(slot)
+                if not existing["sku"] and oos_sku:
+                    existing["sku"] = oos_sku
+                if not existing["item_name"] and oos_name:
+                    existing["item_name"] = oos_name
+
+        for oos_key, group in oos_by_sku.items():
+            if oos_key in already_oos_keys:
+                continue  # gap path already emitted OOS for this SKU (same fingerprint)
+            g_sku = group["sku"]
+            g_item = group["item_name"]
+            g_slot_ids = group["slot_ids"]
+            g_slot_id = g_slot_ids[0] if g_slot_ids else None
+            g_label = g_item or g_sku or g_slot_id or "SKU"
+            findings.append(
+                _make_oos_finding(
+                    settings=settings,
+                    zh=zh,
+                    label=g_label,
+                    sku=g_sku,
+                    item_name=g_item,
+                    shelf=shelf,
+                    planogram_id_str=planogram_id_str,
+                    slot_id=g_slot_id,
+                    slot_ids=g_slot_ids,
+                    key=oos_key,
+                    facing_count=len(group["slots"]),
+                    stock=0,
+                    evidence_items=group["slots"],
+                    gap_detected=False,
+                )
+            )
+
+    # 1) Camera issue — few/no detections.
+    # BUT: if the vision layer reports the view is obstructed by motion (a
+    # customer standing right in front of the lens), that is transient
+    # occlusion, not a broken/misaimed camera. Suppress the finding so a busy
+    # store does not spam camera_issue tickets every time someone blocks the view.
+    if (total == 0 or (product_count == 0 and gap_count == 0)) and not view_obstructed:
         roles = _roles_for_issue("camera_issue", settings)
         title = "摄像头未检测到商品" if zh else "Camera sees no products"
         desc = (
@@ -253,6 +434,9 @@ def extract_findings(
                 fingerprint=_fingerprint("camera_issue", planogram_id_str, shelf),
             )
         )
+        # Out-of-stock is planogram ground truth and does not depend on the
+        # camera: still emit backroom OOS tickets even when vision saw nothing.
+        _append_planogram_out_of_stock()
         return findings
 
     # Aggregate missing facings by SKU so one SKU → one shelf_empty (+ optional OOS).
@@ -304,51 +488,22 @@ def extract_findings(
         empty_stock = stock is not None and stock <= 0
 
         if empty_stock:
-            oos_roles = _roles_for_issue("out_of_stock", settings)
-            oos_title = f"缺货：{label}" if zh else f"Out of stock: {label}"
-            oos_desc = (
-                f"商品「{label}」计划库存为 0（{facing_count} 个 facing 为空）。请后仓补货或订货。"
-                if zh
-                else f"Item '{label}' planogram stock is 0 "
-                f"({facing_count} empty facing(s)). Restock from backroom or reorder."
-            )
-            announce_roles = _roles_for_issue("shelf_empty_announcement", settings)
-            announce_title = (
-                f"货架空位待补货：{label}" if zh else f"Empty facing awaiting replenishment: {label}"
-            )
-            announce_desc = (
-                f"「{label}」的空位已匹配到计划图，库存为 0，已派单给后仓补货。"
-                f"（货架：{shelf or '—'}，{facing_count} 个 facing）"
-                if zh
-                else f"The empty facing for '{label}' matches the planogram and stock is 0. "
-                f"A backroom replenishment ticket has been dispatched. "
-                f"(Shelf: {shelf or '—'}, {facing_count} facing(s).)"
-            )
             findings.append(
-                Finding(
-                    issue_type="out_of_stock",
-                    priority="critical",
-                    assignee_role=oos_roles[0],
-                    assignee_roles=oos_roles,
-                    title=oos_title,
-                    description=oos_desc,
+                _make_oos_finding(
+                    settings=settings,
+                    zh=zh,
+                    label=label,
                     sku=sku,
                     item_name=item_name,
-                    shelf_label=shelf,
-                    planogram_id=planogram_id_str,
+                    shelf=shelf,
+                    planogram_id_str=planogram_id_str,
                     slot_id=slot_id,
-                    evidence={
-                        "missingItems": group["items"],
-                        "facingCount": facing_count,
-                        "planogramStock": stock,
-                        "slotIds": slot_ids,
-                        "assigneeRoles": oos_roles,
-                    },
-                    fingerprint=_fingerprint("out_of_stock", planogram_id_str, key),
-                    announce=True,
-                    announce_title=announce_title,
-                    announce_description=announce_desc,
-                    announce_roles=announce_roles,
+                    slot_ids=slot_ids,
+                    key=key,
+                    facing_count=facing_count,
+                    stock=stock,
+                    evidence_items=group["items"],
+                    gap_detected=True,
                 )
             )
             # Empty-stock facing: only the backroom ticket, no floor_staff ticket.
@@ -389,6 +544,15 @@ def extract_findings(
                 fingerprint=_fingerprint("shelf_empty", planogram_id_str, key),
             )
         )
+
+    # 2b) Out-of-stock from planogram ground truth — independent of any gap.
+    # Stock <= 0 is a staff-entered planogram fact, so the backroom
+    # replenishment ticket must fire even when the camera detected no gap on the
+    # shelf this audit (the last unit may still be sitting there, or the facing
+    # may be occluded). SKUs already handled by the gap-matched empty-facing path
+    # above share the SAME fingerprint, so they are skipped and deduped at ticket
+    # level — the same out-of-stock SKU never opens two tickets.
+    _append_planogram_out_of_stock()
 
     # 3) Low stock — severity bands, one ticket per SKU (min stock across facings).
     low_stock_by_sku: dict[str, dict[str, Any]] = {}
@@ -622,6 +786,9 @@ class LoopState:
     dispatched: list[dict[str, Any]] = field(default_factory=list)
     skipped: list[dict[str, Any]] = field(default_factory=list)
     notifications: list[dict[str, Any]] = field(default_factory=list)
+    # Findings held back this pass because they have not yet been observed in
+    # enough recent audits (temporal debounce). Not an error — awaiting confirmation.
+    debounced: list[dict[str, Any]] = field(default_factory=list)
     # Announcements queued from findings that opened a NEW ticket this pass.
     pending_announcements: list[Finding] = field(default_factory=list)
     narrative: str = ""
@@ -635,9 +802,11 @@ class ClosedLoopAgent:
         self,
         settings: Settings | None = None,
         ticket_store: TicketStore | None = None,
+        observation_store: ObservationStore | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._tickets = ticket_store or get_ticket_store()
+        self._observations = observation_store or get_observation_store()
 
     async def run(
         self,
@@ -674,6 +843,7 @@ class ClosedLoopAgent:
             dispatched=state.dispatched,
             skipped=state.skipped,
             notifications=state.notifications,
+            debounced=state.debounced,
         )
 
     def _node_detect(self, state: LoopState) -> LoopState:
@@ -693,6 +863,82 @@ class ClosedLoopAgent:
             if isinstance(value, str) and value.strip():
                 return value
         return None
+
+    def _debounce_source_key(self, state: LoopState) -> str:
+        """Group observations by shelf/camera so unrelated views don't merge."""
+        return str(state.source_label or "").strip()
+
+    def _passes_debounce(self, finding: Finding, state: LoopState) -> bool:
+        """Record this observation and decide if the finding is confirmed.
+
+        Returns True when the finding has now been seen in at least
+        ``debounce_min_observations`` audits within the trailing window (so it
+        may open a ticket), or when debounce is disabled. When it returns False
+        the finding is held back and logged to ``state.debounced``.
+        """
+        min_obs = getattr(self._settings, "debounce_min_observations", 1) or 1
+        # No fingerprint or debounce disabled → open immediately (legacy behavior).
+        if min_obs <= 1 or not finding.fingerprint:
+            return True
+        # Out-of-stock is planogram ground truth (staff-entered stock), not a
+        # flaky vision reading subject to occlusion / transient false positives.
+        # It must fire immediately on confirmation — debounce/persistence gating
+        # only applies to vision-derived findings (gaps, camera issues).
+        if str(finding.issue_type) == "out_of_stock":
+            return True
+
+        window = getattr(self._settings, "debounce_window_seconds", 180)
+        retention = getattr(self._settings, "debounce_retention_seconds", 1800)
+        min_span = getattr(self._settings, "debounce_min_span_seconds", 0) or 0
+        source_key = self._debounce_source_key(state)
+
+        # Record this observation first, then count (so the current pass counts).
+        try:
+            self._observations.record(
+                finding.fingerprint,
+                str(finding.issue_type),
+                source_key=source_key,
+                retention_seconds=retention,
+            )
+            seen = self._observations.count_recent(
+                finding.fingerprint,
+                window_seconds=window,
+                source_key=source_key,
+            )
+            # Wall-clock persistence: how long has this finding actually spanned?
+            span = (
+                self._observations.span_seconds(
+                    finding.fingerprint,
+                    window_seconds=window,
+                    source_key=source_key,
+                )
+                if min_span > 0
+                else 0.0
+            )
+        except Exception:  # pragma: no cover - never break the audit on debounce
+            return True
+
+        # Confirmed only when the finding has been seen enough times AND (when a
+        # minimum span is configured) has persisted across enough wall-clock
+        # time. A slow walker / lingerer can satisfy the count with a couple of
+        # quick audits but will not persist at the same facing long enough to
+        # clear the span gate.
+        if seen >= min_obs and (min_span <= 0 or span >= min_span):
+            return True
+
+        pending: dict[str, Any] = {
+            "issueType": finding.issue_type,
+            "title": finding.title,
+            "fingerprint": finding.fingerprint,
+            "observations": seen,
+            "required": min_obs,
+            "windowSeconds": window,
+        }
+        if min_span > 0:
+            pending["spanSeconds"] = round(span, 1)
+            pending["requiredSpanSeconds"] = min_span
+        state.debounced.append(pending)
+        return False
 
     def _node_decide(self, state: LoopState) -> LoopState:
         """Create or refresh tickets from findings (priority already decided)."""
@@ -728,6 +974,14 @@ class ClosedLoopAgent:
                         state.tickets_updated.append(refreshed)
                     else:
                         state.tickets_updated.append(updated)
+                continue
+
+            # Temporal debounce (Plan C): before opening a NEW ticket, require
+            # the finding to have been observed in at least
+            # ``debounce_min_observations`` audits inside the trailing window.
+            # A customer walking past produces a gap for one snapshot that
+            # vanishes next audit → never reaches the threshold → filtered.
+            if not self._passes_debounce(finding, state):
                 continue
 
             ticket = self._tickets.create(
@@ -901,15 +1155,33 @@ class ClosedLoopAgent:
         updated = len(state.tickets_updated)
         dispatched = len(state.dispatched)
         warnings = sum(1 for f in state.findings if f.notify_only)
+        pending = len(state.debounced)
         parts = [
             (
                 f"检测到 {len(state.findings)} 个问题；新建工单 {created}，更新 {updated}，"
-                f"已派发 {dispatched}，预警通知 {warnings}。"
+                f"已派发 {dispatched}，预警通知 {warnings}，待确认 {pending}。"
                 if zh
                 else f"Detected {len(state.findings)} issue(s); created {created} ticket(s), "
-                f"updated {updated}, dispatched {dispatched}, warnings {warnings}."
+                f"updated {updated}, dispatched {dispatched}, warnings {warnings}, "
+                f"awaiting confirmation {pending}."
             )
         ]
+        for pending_item in state.debounced[:3]:
+            seen = pending_item.get("observations")
+            need = pending_item.get("required")
+            title = pending_item.get("title") or pending_item.get("issueType")
+            span = pending_item.get("spanSeconds")
+            need_span = pending_item.get("requiredSpanSeconds")
+            if span is not None and need_span:
+                span_note = (
+                    f"，持续 {span}/{need_span}s" if zh else f", spanning {span}/{need_span}s"
+                )
+            else:
+                span_note = ""
+            if zh:
+                parts.append(f"- [待确认 {seen}/{need}{span_note}] {title}")
+            else:
+                parts.append(f"- [pending {seen}/{need}{span_note}] {title}")
         for finding in state.findings[:5]:
             suffix = " (warn)" if finding.notify_only else f" → {finding.assignee_role}"
             parts.append(f"- [{finding.priority}] {finding.title}{suffix}")

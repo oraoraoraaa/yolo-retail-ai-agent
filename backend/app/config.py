@@ -114,6 +114,33 @@ class Settings:
     )
     openai_model: str = field(default_factory=lambda: os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
 
+    # Temporal debounce (Plan C): a finding must be observed in at least
+    # ``debounce_min_observations`` of the audits inside the trailing
+    # ``debounce_window_seconds`` before it may open a ticket. This filters
+    # transient false positives (a customer walking past reads as a gap for one
+    # snapshot). Set min observations to 1 to disable debounce entirely.
+    debounce_min_observations: int = field(
+        default_factory=lambda: int(os.getenv("DEBOUNCE_MIN_OBSERVATIONS", "2"))
+    )
+    debounce_window_seconds: int = field(
+        default_factory=lambda: int(os.getenv("DEBOUNCE_WINDOW_SECONDS", "180"))
+    )
+    # A confirmed finding must also PERSIST across at least this much wall-clock
+    # time, not merely appear in ``debounce_min_observations`` rapid-fire audits.
+    # This is the busy-store defense: a customer choosing items in front of a
+    # facing can briefly reveal a clean gap between two quick audits, but they do
+    # not linger at the SAME facing for a minute-plus. Requiring the gap to span
+    # real time filters slow walkers and lingerers that the median clean plate
+    # alone cannot clear. Latency is not prioritized here (a ~2-minute alarm is
+    # acceptable) but a false alarm is not. Set to 0 to require only the count.
+    debounce_min_span_seconds: int = field(
+        default_factory=lambda: int(os.getenv("DEBOUNCE_MIN_SPAN_SECONDS", "90"))
+    )
+    # Rows older than this are pruned on each write so the table stays small.
+    debounce_retention_seconds: int = field(
+        default_factory=lambda: int(os.getenv("DEBOUNCE_RETENTION_SECONDS", "1800"))
+    )
+
     # Upload / payload size limits (protect event loop + LLM token budgets)
     max_upload_bytes: int = field(
         default_factory=lambda: int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))

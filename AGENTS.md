@@ -106,7 +106,10 @@ Browser UI  (:5173)
   Detection is **via model-local**; matches go to the chosen planogram
   (`POST /api/v1/planograms/{id}/match`), then both JSON blobs to backend
   `POST /api/v1/audit/analyze-detections` (which also runs the closed-loop
-  ticket pipeline).
+  ticket pipeline). The `LocalDetectionResult` type carries the `occlusion`
+  block + per-detection `obscured` flags; `PlanogramMatchResult` carries
+  `obscuredMatches`. The offline planogram stub mirrors the same
+  occlusion-skipping logic as the backend.
 - Ticket board: kanban of action tickets, status transitions, verify re-scan,
   and admin webhook settings (Slack / WeCom / generic).
 - Commands: `npm install` / `npm run dev` / `npm run build` / `npm run lint`.
@@ -116,19 +119,20 @@ Browser UI  (:5173)
 ```text
 backend/app/
   main.py          # app, CORS, lifespan init_db, /health
-  config.py        # env settings (LOCAL_VISION_*, OPENAI_*, DATABASE_*, AUTH_*)
+  config.py        # env settings (LOCAL_VISION_*, OPENAI_*, DATABASE_*, AUTH_*, DEBOUNCE_*)
   db/              # SQLAlchemy models + session (SQLite default / Postgres via URL)
   routers/         # auth, audit, chat, database, planogram, media, tickets
   schemas/         # camelCase Pydantic models
   services/
     detector.py         # HTTP client → model-local (no YOLO load)
     agent.py            # LLM retail agent + offline narratives
-    closed_loop.py      # Detect → Decide → Dispatch → Verify ticket graph
+    closed_loop.py      # Detect → Decide → Dispatch → Verify ticket graph (+ temporal debounce)
     ticket_store.py     # SQL action tickets + status transitions
+    observation_store.py # SQL finding observations for temporal debounce (Plan C)
     webhooks.py         # multi-endpoint Slack/WeCom/generic webhook dispatch
     store.py            # SQL record store (audits + image refs + detection JSON)
     planogram_store.py  # SQL planograms + active selection
-    planogram_match.py  # map detection centers → grid slots
+    planogram_match.py  # map detection centers → slots (occlusion-aware: obscured facings skipped); also emits outOfStockSlots (stock<=0) independent of detections
     backup.py           # system backup zip export / validated restore
     auth.py             # JWT + bcrypt staff auth
     media.py            # on-disk image refs under backend/data/media
@@ -146,13 +150,13 @@ Important endpoints:
 | GET/POST | `/api/v1/tickets` | list / manually create action tickets |
 | PATCH | `/api/v1/tickets/{id}` | update ticket status (open → done → …) |
 | POST | `/api/v1/tickets/{id}/dispatch` | re-send webhook notification |
-| POST | `/api/v1/agent/closed-loop/run` | Detect → Decide → Dispatch over a shelf snapshot |
+| POST | `/api/v1/agent/closed-loop/run` | Detect → Decide → Dispatch over a shelf snapshot (findings held by temporal debounce until confirmed) |
 | POST | `/api/v1/agent/closed-loop/verify/{id}` | after done: re-scan, verify or escalate |
 | GET/PUT | `/api/v1/admin/webhooks` | admin Slack/WeCom/generic webhook settings |
 | POST | `/api/v1/admin/webhooks/test` | send a test webhook message |
 | GET/POST | `/api/v1/planograms` | list / create planograms (SQL) |
 | PUT | `/api/v1/planograms/active` | choose planogram used by audits |
-| POST | `/api/v1/planograms/{id}/match` | match vision detections to grid slots |
+| POST | `/api/v1/planograms/{id}/match` | match vision detections to freehand slots (obscured facings excluded from missingItems); also returns `outOfStockSlots` (every slot with stock ≤ 0), so the decision layer can open a backroom `out_of_stock` ticket even when no gap was detected |
 | DELETE | `/api/v1/planograms/{id}` | delete planogram + its media image |
 | DELETE | `/api/v1/database/records` | clear DB-page records + `media/audits` |
 | GET | `/api/v1/database/backup` | download full system backup zip |
@@ -174,10 +178,32 @@ uv run pytest
 
 ### `model-local/` — local vision service
 
-- `stream_server.py` — HTTP API (stream + detect).
-- `detection.py` — camera backends (macOS AVFoundation / Linux V4L2 / CAP_ANY), drawing helpers.
+- `stream_server.py` — HTTP API (stream + detect). Live streams keep a small
+  **ring buffer** of recent raw frames; `/detect/capture` medians a short
+  **burst** (from the ring buffer when streaming, else a self-contained
+  multi-frame grab) into an occlusion-free clean plate before detection. For
+  non-streaming cameras the burst is **adaptive**: it escalates over a longer
+  window (up to `burstMaxSeconds`, default 8s) while the view stays busy and
+  stops early once it reads clean, so a customer *lingering* to choose/pick
+  items is medianed out without slowing empty-shelf audits. A per-camera
+  **long-baseline** of one downscaled frame per recent audit (spanning ~3 min,
+  `useAuditHistory`) is folded into the median only — never the motion mask —
+  so slow/lingering shoppers are out-voted over minutes at trivial memory cost.
+- `detection.py` — camera backends (macOS AVFoundation / Linux V4L2 / CAP_ANY),
+  drawing helpers, and temporal anti-occlusion helpers (`median_clean_plate`,
+  `motion_occlusion_mask`, `occlusion_regions`, `detection_obscured`,
+  `downscale_frame` / `unify_frames` for the long-baseline clean plate).
 - `main-on-screen.py` — OpenCV window for manual tests.
 - Must remain the **single runtime detector** for the app.
+- **No person/COCO detector here.** Occlusion is derived from frame-difference
+  motion on a fixed camera, not a second model (keeps the single-detector rule).
+- Detect responses carry per-detection `obscured` flags, `summary.obscuredCount`,
+  and an `occlusion` block (`coverage`, `viewObstructed`, normalized `regions`,
+  `burstFrames`, `baselineFrames`, `escalated`). Optional burst tuning in the
+  request body: `burstFrames` (default 7, set 1 to disable), `burstInterval`
+  (default 0.12s), `burstMaxSeconds` (adaptive escalation budget, default 8s,
+  set 0 to disable escalation), and `useAuditHistory` (long-baseline clean
+  plate, default true).
 
 Commands:
 
@@ -272,7 +298,8 @@ Follow Conventional Commits (see human rules doc). Examples relevant here:
 ### Config / secrets
 
 - Copy from `.env.example` only; never commit real keys.
-- Backend: `OPENAI_*`, `LOCAL_VISION_*`, `APP_CORS_ORIGINS`, `DATABASE_URL`, `AUTH_*`.
+- Backend: `OPENAI_*`, `LOCAL_VISION_*`, `APP_CORS_ORIGINS`, `DATABASE_URL`, `AUTH_*`, `DEBOUNCE_*`.
+- `DEBOUNCE_MIN_OBSERVATIONS` / `DEBOUNCE_WINDOW_SECONDS` / `DEBOUNCE_MIN_SPAN_SECONDS` / `DEBOUNCE_RETENTION_SECONDS` tune temporal false-positive suppression; set min observations to `1` and min span to `0` to disable. `DEBOUNCE_MIN_SPAN_SECONDS` is the busy-store persistence gate: a confirmed finding must also span that much wall-clock time (not just appear in N rapid-fire audits), so a customer choosing/picking items can't trip a false alarm.
 - Frontend: `VITE_API_BASE_URL`, `VITE_STREAM_BASE_URL`.
 - Default DB is SQLite at `backend/data/retail.db`; set `DATABASE_URL=postgresql://...` for Postgres.
 - Set `AUTH_ENABLED=true` + a strong `AUTH_SECRET` for store deployment; bootstrap admin from `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`.
@@ -299,6 +326,29 @@ These are real; fix only when the task asks for them:
   FastAPI would share auth/CORS/OpenAPI with the backend but is not required yet).
 - Frontend API types are hand-mirrored from Pydantic schemas (no OpenAPI → TS
   codegen). Keep both sides in sync when changing request/response shapes.
+- **Occlusion/debounce are heuristics, not guarantees.** The motion mask assumes
+  a fixed camera; a person standing perfectly still for a whole burst can still
+  end up in the short-burst clean plate. That case is now mitigated three ways:
+  the **adaptive burst** extends the capture window while the view stays busy;
+  the **long-baseline** median folds in one downscaled frame per recent audit
+  (spanning ~3 min) so a lingerer is out-voted over minutes; and the **wall-clock
+  persistence gate** (`DEBOUNCE_MIN_SPAN_SECONDS`) refuses to confirm a gap that
+  hasn't persisted across real time. None is a guarantee — a *perpetually* busy
+  aisle confirms a real gap slowly (only during lulls), which is the intended
+  trade (a ~2-min alarm is acceptable, a false alarm is not). Thresholds
+  (`MOTION_DIFF_THRESHOLD`, `OBSCURED_OVERLAP_THRESHOLD`, `VIEW_OBSTRUCTED_COVERAGE`,
+  `BURST_ESCALATE_COVERAGE`, `BURST_MAX_SECONDS`, `AUDIT_HISTORY_*` in
+  `model-local/stream_server.py` / `detection.py`; `DEBOUNCE_*` env) are demo
+  defaults and may need per-store tuning. The long-baseline window is
+  intentionally bounded to ~the debounce window so a genuine sold-out gap still
+  becomes the median majority within ~90s rather than being masked by stale
+  product frames.
+- **Long-baseline audit history is transient in-memory state.** It lives on the
+  `DetectionStream` (streaming cameras) or the process-wide `AuditHistoryStore`
+  (non-streaming), resets on stream stop / server restart, and is never
+  persisted or backed up.
+- `finding_observations` is transient debounce state — intentionally **not**
+  included in the backup zip; it resets on a ticket-board wipe.
 
 ---
 
