@@ -125,11 +125,17 @@ def authenticate_user(username: str, password: str) -> AuthUser | None:
 
 
 def ensure_default_admin() -> None:
-    """Create the bootstrap owner when the users table is empty.
+    """Ensure at least one active owner account exists.
 
-    The bootstrap account is seeded as ``owner`` because it is the only role
-    allowed to manage other accounts. Existing single-``admin`` deployments are
-    upgraded in place so the store can still reach the Accounts panel.
+    Called on startup and after backup restore. The owner role is the only one
+    that can manage accounts; without an active owner the Accounts panel is
+    permanently locked out.
+
+    Rules:
+    1. Empty users table → seed the bootstrap owner (AUTH_ADMIN_*).
+    2. Inactive owner(s) only → reactivate one (prefer AUTH_ADMIN_USERNAME).
+    3. No owner role at all → promote bootstrap username if present, else the
+       first existing user, and mark them active.
     """
     settings = get_settings()
     get_engine()
@@ -145,18 +151,34 @@ def ensure_default_admin() -> None:
                 )
             )
             return
-        # Upgrade path: if no owner exists yet (older deploys seeded "admin"),
-        # promote the bootstrap admin account to owner so accounts stay reachable.
-        has_owner = session.scalars(
+
+        active_owner = session.scalars(
+            select(UserRow)
+            .where(UserRow.role == ROLE_OWNER, UserRow.is_active.is_(True))
+            .limit(1)
+        ).first()
+        if active_owner is not None:
+            return
+
+        # Prefer reactivating an existing owner over promoting someone else.
+        seed = session.scalars(
+            select(UserRow).where(UserRow.username == settings.auth_admin_username)
+        ).first()
+        inactive_owner = session.scalars(
             select(UserRow).where(UserRow.role == ROLE_OWNER).limit(1)
         ).first()
-        if has_owner is None:
-            seed = session.scalars(
-                select(UserRow).where(UserRow.username == settings.auth_admin_username)
-            ).first()
-            target = seed or existing
-            if target is not None:
-                target.role = ROLE_OWNER
+        # Prefer bootstrap username if that row is already an (inactive) owner.
+        if seed is not None and seed.role == ROLE_OWNER:
+            seed.is_active = True
+            return
+        if inactive_owner is not None:
+            inactive_owner.is_active = True
+            return
+
+        # No owner role at all (older admin-only backups / demoted restores).
+        target = seed or existing
+        target.role = ROLE_OWNER
+        target.is_active = True
 
 
 def get_current_user(

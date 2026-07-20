@@ -233,6 +233,7 @@ def export_backup_zip() -> bytes:
         "restoreNotes": [
             "Re-enter webhook URLs in Ticket Board → Webhook settings after restore.",
             "Staff passwords are not restored; existing local passwords are preserved when usernames match.",
+            "Restore always ensures at least one active owner account so Accounts management stays reachable.",
             "Environment API keys (.env) are not part of the backup — keep those separately.",
         ],
     }
@@ -520,6 +521,13 @@ def restore_backup_zip(raw: bytes) -> dict[str, int]:
                     session.add(AppSettingRow(key=key, value=value))
 
             session.flush()
+
+    # Backups may predate the owner role, contain only staff/admin, or drop every
+    # user (redacted passwords with no live username match). Without an active
+    # owner, account management is permanently locked out — heal that here.
+    from app.services.auth import ensure_default_admin
+
+    ensure_default_admin()
 
     from app.services.planogram_store import reset_planogram_store
     from app.services.store import reset_store

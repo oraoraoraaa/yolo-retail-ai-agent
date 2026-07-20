@@ -191,6 +191,154 @@ def test_restore_rejects_invalid_zip() -> None:
     assert bad.status_code == 400
 
 
+def _build_backup_zip(*, users: list[dict], records: list[dict] | None = None) -> bytes:
+    """Minimal valid backup zip for restore tests."""
+    import json
+
+    payload = {
+        "users": users,
+        "records": records or [],
+        "planograms": [],
+        "tickets": [],
+        "app_settings": [],
+    }
+    manifest = {
+        "version": 1,
+        "createdAt": "2026-01-01T00:00:00+00:00",
+        "app": "yolo-retail-ai-agent",
+        "counts": {key: len(value) for key, value in payload.items()},
+        "secretsRedacted": True,
+    }
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest))
+        zf.writestr("data.json", json.dumps(payload))
+    return buffer.getvalue()
+
+
+def test_restore_promotes_owner_when_backup_has_no_owner() -> None:
+    """Old/admin-only backups must not leave the system without an owner."""
+    from sqlalchemy import select
+
+    from app.db.models import UserRow
+    from app.db.session import get_session
+    from app.services.auth import ROLE_OWNER, hash_password
+    from app.services.backup import restore_backup_zip
+
+    staff_hash = hash_password("staff-pass")
+    raw = _build_backup_zip(
+        users=[
+            {
+                "id": 10,
+                "username": "clerk",
+                "role": "staff",
+                "is_active": True,
+                "password_hash": staff_hash,
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "id": 11,
+                "username": "manager",
+                "role": "admin",
+                "is_active": True,
+                "password_hash": hash_password("admin-pass"),
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+        ]
+    )
+
+    result = restore_backup_zip(raw)
+    assert result["users"] == 2
+
+    with get_session() as session:
+        owners = session.scalars(
+            select(UserRow).where(UserRow.role == ROLE_OWNER, UserRow.is_active.is_(True))
+        ).all()
+        assert len(owners) >= 1
+        # Prefer promoting bootstrap username when present; here neither is
+        # AUTH_ADMIN_USERNAME, so the first restored user is promoted.
+        assert any(user.role == ROLE_OWNER and user.is_active for user in owners)
+
+
+def test_restore_reactivates_inactive_owner() -> None:
+    from sqlalchemy import select
+
+    from app.db.models import UserRow
+    from app.db.session import get_session
+    from app.services.auth import ROLE_OWNER, hash_password
+    from app.services.backup import restore_backup_zip
+
+    raw = _build_backup_zip(
+        users=[
+            {
+                "id": 1,
+                "username": "owner",
+                "role": "owner",
+                "is_active": False,
+                "password_hash": hash_password("owner-pass"),
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "id": 2,
+                "username": "staff1",
+                "role": "staff",
+                "is_active": True,
+                "password_hash": hash_password("staff-pass"),
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+        ]
+    )
+    restore_backup_zip(raw)
+
+    with get_session() as session:
+        owner = session.scalars(
+            select(UserRow).where(UserRow.username == "owner")
+        ).first()
+        assert owner is not None
+        assert owner.role == ROLE_OWNER
+        assert owner.is_active is True
+
+
+def test_restore_seeds_owner_when_no_users_survive() -> None:
+    """Redacted backups with no live password matches must still seed an owner."""
+    from sqlalchemy import select
+
+    from app.config import get_settings
+    from app.db.models import UserRow
+    from app.db.session import get_session
+    from app.services.auth import ROLE_OWNER, verify_password
+    from app.services.backup import restore_backup_zip
+
+    # Users without password hashes and no matching live username → all skipped.
+    raw = _build_backup_zip(
+        users=[
+            {
+                "username": "ghost",
+                "role": "staff",
+                "is_active": True,
+                "password_hash": None,
+                "credentials_redacted": True,
+            }
+        ]
+    )
+    # Wipe live users so password merge cannot salvage anyone.
+    with get_session() as session:
+        for row in session.scalars(select(UserRow)).all():
+            session.delete(row)
+
+    restore_backup_zip(raw)
+    settings = get_settings()
+
+    with get_session() as session:
+        owners = session.scalars(
+            select(UserRow).where(UserRow.role == ROLE_OWNER, UserRow.is_active.is_(True))
+        ).all()
+        assert len(owners) == 1
+        owner = owners[0]
+        assert owner.username == settings.auth_admin_username
+        assert verify_password(settings.auth_admin_password, owner.password_hash)
+
+
 def test_backup_redacts_secrets() -> None:
     """Backup zip must not contain password hashes or webhook URLs."""
     import json
