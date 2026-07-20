@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { fetchAuthMe, fetchAuthStatus, login as apiLogin } from '@/api/auth'
 import {
+  AUTH_REQUIRED_EVENT,
   clearAuthSession,
+  getApiBaseUrl,
   getAuthToken,
   getStoredAuthUser,
 } from '@/api/client'
@@ -51,6 +53,16 @@ function permsFromRole(role: string | null): {
   return { canWrite: false, canViewAccounts: false, canManageAccounts: false }
 }
 
+/**
+ * True offline mode is only for UI work without a backend
+ * (`VITE_API_BASE_URL` empty). When a backend origin is configured we must
+ * never pretend to be "signed in as offline" — that bypasses LoginPanel while
+ * protected APIs still return 401.
+ */
+function isTrueOfflineMode(): boolean {
+  return !getApiBaseUrl()
+}
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>(INITIAL)
 
@@ -74,6 +86,21 @@ export function useAuth() {
     },
     [],
   )
+
+  const forceLoginGate = useCallback((errorMessage: string | null = null) => {
+    setState({
+      status: 'ready',
+      authEnabled: true,
+      authenticated: false,
+      userId: null,
+      username: null,
+      role: null,
+      canWrite: false,
+      canViewAccounts: false,
+      canManageAccounts: false,
+      errorMessage,
+    })
+  }, [])
 
   const refresh = useCallback(async () => {
     setState((previous) => ({ ...previous, status: 'loading', errorMessage: null }))
@@ -132,25 +159,51 @@ export function useAuth() {
         errorMessage: null,
       })
     } catch (error) {
-      // If the agent is unreachable, allow offline UI (no auth gate).
-      setState({
-        status: 'ready',
-        authEnabled: false,
-        authenticated: true,
-        userId: null,
-        username: 'offline',
-        role: 'owner',
-        canWrite: true,
-        canViewAccounts: true,
-        canManageAccounts: true,
-        errorMessage: error instanceof Error ? error.message : 'Auth status unavailable',
-      })
+      if (isTrueOfflineMode()) {
+        // No backend origin configured — allow local stubs without a login gate.
+        setState({
+          status: 'ready',
+          authEnabled: false,
+          authenticated: true,
+          userId: null,
+          username: 'offline',
+          role: 'owner',
+          canWrite: true,
+          canViewAccounts: true,
+          canManageAccounts: true,
+          errorMessage: error instanceof Error ? error.message : 'Auth status unavailable',
+        })
+        return
+      }
+
+      // Backend is configured but /auth/status failed (down, CORS, transient).
+      // Do NOT fall into "signed in as offline" — that hides LoginPanel while
+      // planograms/tickets still require a JWT and log 401s.
+      forceLoginGate(
+        error instanceof Error
+          ? error.message
+          : 'Auth status unavailable. Sign in once the agent is reachable.',
+      )
     }
-  }, [applyPermissions])
+  }, [applyPermissions, forceLoginGate])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // Any protected API 401 should re-open the login panel when a backend is set.
+  useEffect(() => {
+    if (isTrueOfflineMode()) {
+      return
+    }
+    function onAuthRequired(): void {
+      forceLoginGate(null)
+    }
+    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired)
+    return () => {
+      window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired)
+    }
+  }, [forceLoginGate])
 
   async function login(username: string, password: string): Promise<boolean> {
     setState((previous) => ({ ...previous, errorMessage: null }))
@@ -177,6 +230,7 @@ export function useAuth() {
           : 'failed'
       setState((previous) => ({
         ...previous,
+        authEnabled: true,
         authenticated: false,
         errorMessage: message,
       }))

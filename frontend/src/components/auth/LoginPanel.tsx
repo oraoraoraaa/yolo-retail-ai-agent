@@ -21,7 +21,9 @@ export function LoginPanel({
   errorMessage,
   onSubmit,
 }: LoginPanelProps) {
-  const [username, setUsername] = useState('admin')
+  // Match the bootstrap owner seeded by AUTH_ADMIN_USERNAME (default: owner).
+  // Older DBs may still use an "admin" username — the hint below covers that.
+  const [username, setUsername] = useState('owner')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
 

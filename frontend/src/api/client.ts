@@ -70,6 +70,9 @@ export function absoluteApiUrl(path: string): string {
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 }
 
+/** Dispatched when a backend call returns 401 so the UI can open the login gate. */
+export const AUTH_REQUIRED_EVENT = 'yolo-retail-auth-required'
+
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
   const headers = new Headers(init?.headers ?? {})
@@ -84,8 +87,13 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   })
 
   if (response.status === 401) {
-    // Token expired / invalid — clear local session so the UI can re-login.
+    // Token missing / expired / invalid — clear local session and notify the auth
+    // hook so the login panel can appear. Without this, a failed /auth/status
+    // "offline" fallback can leave the UI writable while planograms/tickets 401.
     clearAuthSession()
+    if (typeof window !== 'undefined' && API_BASE_URL) {
+      window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT))
+    }
   }
 
   if (!response.ok) {
