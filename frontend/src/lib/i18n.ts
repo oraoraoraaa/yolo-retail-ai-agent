@@ -21,7 +21,7 @@ export const UI_TEXT = {
       signOut: 'Sign out',
       signedInAs: 'Signed in as',
       checking: 'Checking session...',
-      hint: 'Default bootstrap account is admin / admin when AUTH_ENABLED=true. Change AUTH_ADMIN_PASSWORD in production.',
+      hint: 'Default bootstrap account (owner role) is owner / owner when AUTH_ENABLED=true. Change AUTH_ADMIN_PASSWORD in production.',
       errors: {
         invalid: 'Invalid username or password.',
         failed: 'Sign-in failed. Check the agent service and try again.',
@@ -457,7 +457,7 @@ export const UI_TEXT = {
       signOut: '退出登录',
       signedInAs: '当前用户',
       checking: '正在检查登录状态...',
-      hint: '开启 AUTH_ENABLED=true 后，默认管理员账号为 admin / admin。生产环境请修改 AUTH_ADMIN_PASSWORD。',
+      hint: '开启 AUTH_ENABLED=true 后，默认引导账号（owner 角色）为 owner / owner。生产环境请修改 AUTH_ADMIN_PASSWORD。',
       errors: {
         invalid: '用户名或密码错误。',
         failed: '登录失败，请检查 Agent 服务后重试。',

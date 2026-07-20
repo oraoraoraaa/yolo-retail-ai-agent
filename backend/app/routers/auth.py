@@ -78,9 +78,12 @@ async def login(payload: LoginRequest) -> LoginResponse:
         user = authenticate_user(username, payload.password)
         if user is None and username == settings.auth_admin_username:
             # Dev convenience when auth is off and seed user password matches env default.
-            from app.services.auth import AuthUser
+            # The bootstrap account is the top-tier ``owner`` (full control incl.
+            # account management), matching ensure_default_admin() and the
+            # auth-disabled principal in services/auth.py.
+            from app.services.auth import ROLE_OWNER, AuthUser
 
-            user = AuthUser(id=0, username=username, role="admin")
+            user = AuthUser(id=0, username=username, role=ROLE_OWNER)
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

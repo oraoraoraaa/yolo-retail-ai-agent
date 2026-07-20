@@ -52,7 +52,9 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. When `AUTH_ENABLED=true` on the backend, the UI
-shows a login screen (default bootstrap user `admin` / `admin`).
+shows a login screen. The bootstrap account (default `owner` / `owner`) is
+seeded as the top-tier **owner** role — full control including account
+management. Create `admin` and `staff` users from the in-app Accounts panel.
 
 ## Develop
 

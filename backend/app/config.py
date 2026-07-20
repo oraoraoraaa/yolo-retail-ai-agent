@@ -178,11 +178,14 @@ class Settings:
     auth_token_ttl_hours: int = field(
         default_factory=lambda: int(os.getenv("AUTH_TOKEN_TTL_HOURS", "12"))
     )
+    # Bootstrap account seeded when the users table is empty. It is created as
+    # the top-tier ``owner`` role (full control incl. account management), not a
+    # plain admin — see services/auth.ensure_default_admin.
     auth_admin_username: str = field(
-        default_factory=lambda: os.getenv("AUTH_ADMIN_USERNAME", "admin")
+        default_factory=lambda: os.getenv("AUTH_ADMIN_USERNAME", "owner")
     )
     auth_admin_password: str = field(
-        default_factory=lambda: os.getenv("AUTH_ADMIN_PASSWORD", "admin")
+        default_factory=lambda: os.getenv("AUTH_ADMIN_PASSWORD", "owner")
     )
 
     @property

@@ -302,7 +302,7 @@ Follow Conventional Commits (see human rules doc). Examples relevant here:
 - `DEBOUNCE_MIN_OBSERVATIONS` / `DEBOUNCE_WINDOW_SECONDS` / `DEBOUNCE_MIN_SPAN_SECONDS` / `DEBOUNCE_RETENTION_SECONDS` tune temporal false-positive suppression; set min observations to `1` and min span to `0` to disable. `DEBOUNCE_MIN_SPAN_SECONDS` is the busy-store persistence gate: a confirmed finding must also span that much wall-clock time (not just appear in N rapid-fire audits), so a customer choosing/picking items can't trip a false alarm.
 - Frontend: `VITE_API_BASE_URL`, `VITE_STREAM_BASE_URL`.
 - Default DB is SQLite at `backend/data/retail.db`; set `DATABASE_URL=postgresql://...` for Postgres.
-- Set `AUTH_ENABLED=true` + a strong `AUTH_SECRET` for store deployment; bootstrap admin from `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`.
+- Set `AUTH_ENABLED=true` + a strong `AUTH_SECRET` for store deployment; the bootstrap account (`AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD`) is seeded as the top-tier **owner** role (full control incl. account management) when the users table is empty. Three tiers: owner / admin / staff (owner manages accounts, admin writes everything except accounts, staff is read-only + chat); see `backend/README.md` → "Account tiers (RBAC)".
 
 ### What not to do
 
@@ -321,7 +321,7 @@ These are real; fix only when the task asks for them:
 - **Planogram↔detection matching** maps each detection center into the smallest
   user-drawn planogram rectangle that contains it (not auto rows×cols grids).
 - Multi-process local stack (no docker-compose yet).
-- Auth is a single bootstrap admin (no multi-user admin UI yet).
+- Auth has three account tiers (owner / admin / staff) with an in-app Accounts panel (owner-managed). The bootstrap account seeds as owner; older admin-only deploys are auto-promoted to owner on startup.
 - `model-local/stream_server.py` is a raw `ThreadingHTTPServer` (fine for demos;
   FastAPI would share auth/CORS/OpenAPI with the backend but is not required yet).
 - Frontend API types are hand-mirrored from Pydantic schemas (no OpenAPI → TS

@@ -59,15 +59,34 @@ Interactive docs: `http://localhost:8000/docs`.
 # backend/.env
 AUTH_ENABLED=true
 AUTH_SECRET=replace-with-a-long-random-string
-AUTH_ADMIN_USERNAME=admin
+AUTH_ADMIN_USERNAME=owner
 AUTH_ADMIN_PASSWORD=change-me
 ```
 
 When `AUTH_ENABLED=true`, all API routes except `/`, `/health`, and
-`/api/v1/auth/*` require `Authorization: Bearer <token>`. The frontend shows a
-login screen and attaches the token automatically.
+`/api/v1/auth/*` require an `Authorization: Bearer` token header. The frontend
+shows a login screen and attaches the token automatically.
 
 Local demos keep `AUTH_ENABLED=false` (default) so the UI works without login.
+
+### Account tiers (RBAC)
+
+Three account roles, enforced by backend dependencies (frontend gating is UX
+only):
+
+| Role | Can do |
+| --- | --- |
+| `owner` | Everything, **including account management** (add/edit/delete users). |
+| `admin` | Change everything **except** accounts (accounts are view-only). |
+| `staff` | Chat with the agent + view cameras only — **no changes anywhere**. |
+
+`AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` seed the bootstrap account when the
+users table is empty; it is created as the top-tier **`owner`** so the Accounts
+panel is reachable on first login. Create `admin` / `staff` users from that
+panel afterwards. Older admin-only deployments are auto-upgraded: if no owner
+exists, the bootstrap admin account is promoted to owner on startup. Mutating
+endpoints carry the `require_write` dependency (rejects `staff`); account
+management carries `require_account_admin` (owner only).
 
 ## Ticket rules (findings → assignee)
 
