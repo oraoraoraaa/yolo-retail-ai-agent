@@ -80,6 +80,9 @@ interface TicketBoardPanelProps {
   text: BoardText
   language: Language
   isAdmin: boolean
+  /** When false the current user is read-only (staff): hide all ticket actions. */
+  canWrite?: boolean
+  readOnlyNotice?: string
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -232,7 +235,13 @@ function newEndpointId(channel: WebhookChannel): string {
   return `ep-${channel}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function TicketBoardPanel({ text, language, isAdmin }: TicketBoardPanelProps) {
+export function TicketBoardPanel({
+  text,
+  language,
+  isAdmin,
+  canWrite = true,
+  readOnlyNotice,
+}: TicketBoardPanelProps) {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [total, setTotal] = useState(0)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
@@ -559,14 +568,16 @@ export function TicketBoardPanel({ text, language, isAdmin }: TicketBoardPanelPr
               {showSettings ? text.hideWebhooks : text.configureWebhooks}
             </button>
           ) : null}
-          <button
-            className={styles.dangerButton}
-            type="button"
-            disabled={isLoading || total === 0}
-            onClick={() => void onClearAllTickets()}
-          >
-            {text.clearAll}
-          </button>
+          {canWrite ? (
+            <button
+              className={styles.dangerButton}
+              type="button"
+              disabled={isLoading || total === 0}
+              onClick={() => void onClearAllTickets()}
+            >
+              {text.clearAll}
+            </button>
+          ) : null}
           <button
             className={styles.button}
             type="button"
@@ -1047,50 +1058,56 @@ export function TicketBoardPanel({ text, language, isAdmin }: TicketBoardPanelPr
               {text.verifiedAt}: {formatDate(selected.verifiedAt)}
             </p>
 
-            <div className={styles.actionRow}>
-              {selected.status === 'open' || selected.status === 'escalated' ? (
-                <button
-                  className={styles.primaryButton}
-                  type="button"
-                  disabled={selectedBusy}
-                  onClick={() => void onRedispatch(selected.id)}
-                >
-                  {text.dispatch}
-                </button>
-              ) : null}
-              {selected.status === 'dispatched' || selected.status === 'open' ? (
-                <button
-                  className={styles.button}
-                  type="button"
-                  disabled={selectedBusy}
-                  onClick={() => void changeStatus(selected.id, 'in_progress', 'Staff started work')}
-                >
-                  {text.markInProgress}
-                </button>
-              ) : null}
-              {selected.status === 'in_progress' || selected.status === 'dispatched' ? (
-                <button
-                  className={styles.button}
-                  type="button"
-                  disabled={selectedBusy}
-                  onClick={() => void changeStatus(selected.id, 'done', 'Marked done by staff')}
-                >
-                  {text.markDone}
-                </button>
-              ) : null}
-              {selected.status !== 'cancelled' && selected.status !== 'verified' ? (
-                <button
-                  className={styles.dangerButton}
-                  type="button"
-                  disabled={selectedBusy}
-                  onClick={() => void changeStatus(selected.id, 'cancelled', 'Cancelled')}
-                >
-                  {text.cancel}
-                </button>
-              ) : null}
-            </div>
+            {!canWrite && readOnlyNotice ? (
+              <p className={styles.detailMeta}>{readOnlyNotice}</p>
+            ) : null}
 
-            {selected.status === 'done' ? (
+            {canWrite ? (
+              <div className={styles.actionRow}>
+                {selected.status === 'open' || selected.status === 'escalated' ? (
+                  <button
+                    className={styles.primaryButton}
+                    type="button"
+                    disabled={selectedBusy}
+                    onClick={() => void onRedispatch(selected.id)}
+                  >
+                    {text.dispatch}
+                  </button>
+                ) : null}
+                {selected.status === 'dispatched' || selected.status === 'open' ? (
+                  <button
+                    className={styles.button}
+                    type="button"
+                    disabled={selectedBusy}
+                    onClick={() => void changeStatus(selected.id, 'in_progress', 'Staff started work')}
+                  >
+                    {text.markInProgress}
+                  </button>
+                ) : null}
+                {selected.status === 'in_progress' || selected.status === 'dispatched' ? (
+                  <button
+                    className={styles.button}
+                    type="button"
+                    disabled={selectedBusy}
+                    onClick={() => void changeStatus(selected.id, 'done', 'Marked done by staff')}
+                  >
+                    {text.markDone}
+                  </button>
+                ) : null}
+                {selected.status !== 'cancelled' && selected.status !== 'verified' ? (
+                  <button
+                    className={styles.dangerButton}
+                    type="button"
+                    disabled={selectedBusy}
+                    onClick={() => void changeStatus(selected.id, 'cancelled', 'Cancelled')}
+                  >
+                    {text.cancel}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {canWrite && selected.status === 'done' ? (
               <div className={styles.verifyBox}>
                 <p className={styles.detailBody}>{text.verifyHint}</p>
                 <div className={styles.actionRow}>

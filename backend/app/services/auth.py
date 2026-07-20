@@ -18,6 +18,22 @@ from app.db.session import get_engine, get_session
 
 _bearer = HTTPBearer(auto_error=False)
 
+# Role hierarchy for the store deployment:
+#   owner  → full control, INCLUDING account management (add/edit/delete users).
+#   admin  → change everything EXCEPT accounts (accounts are view-only).
+#   staff  → chat with the agent + view cameras only; no changes at all.
+ROLE_OWNER = "owner"
+ROLE_ADMIN = "admin"
+ROLE_STAFF = "staff"
+VALID_ROLES = (ROLE_OWNER, ROLE_ADMIN, ROLE_STAFF)
+
+# Roles allowed to make changes (writes) anywhere except account management.
+WRITE_ROLES = frozenset({ROLE_OWNER, ROLE_ADMIN})
+# Roles allowed to VIEW accounts (owner can also edit them).
+ACCOUNT_VIEW_ROLES = frozenset({ROLE_OWNER, ROLE_ADMIN})
+# Roles allowed to MANAGE (write) accounts.
+ACCOUNT_ADMIN_ROLES = frozenset({ROLE_OWNER})
+
 
 @dataclass(frozen=True)
 class AuthUser:
@@ -26,6 +42,19 @@ class AuthUser:
     id: int
     username: str
     role: str
+
+    @property
+    def can_write(self) -> bool:
+        """True when the principal may mutate shelf/ticket/planogram state."""
+        return self.role in WRITE_ROLES
+
+    @property
+    def can_view_accounts(self) -> bool:
+        return self.role in ACCOUNT_VIEW_ROLES
+
+    @property
+    def can_manage_accounts(self) -> bool:
+        return self.role in ACCOUNT_ADMIN_ROLES
 
 
 def hash_password(password: str) -> str:
@@ -96,21 +125,38 @@ def authenticate_user(username: str, password: str) -> AuthUser | None:
 
 
 def ensure_default_admin() -> None:
-    """Create the bootstrap admin when the users table is empty."""
+    """Create the bootstrap owner when the users table is empty.
+
+    The bootstrap account is seeded as ``owner`` because it is the only role
+    allowed to manage other accounts. Existing single-``admin`` deployments are
+    upgraded in place so the store can still reach the Accounts panel.
+    """
     settings = get_settings()
     get_engine()
     with get_session() as session:
         existing = session.scalars(select(UserRow).limit(1)).first()
-        if existing is not None:
-            return
-        session.add(
-            UserRow(
-                username=settings.auth_admin_username,
-                password_hash=hash_password(settings.auth_admin_password),
-                role="admin",
-                is_active=True,
+        if existing is None:
+            session.add(
+                UserRow(
+                    username=settings.auth_admin_username,
+                    password_hash=hash_password(settings.auth_admin_password),
+                    role=ROLE_OWNER,
+                    is_active=True,
+                )
             )
-        )
+            return
+        # Upgrade path: if no owner exists yet (older deploys seeded "admin"),
+        # promote the bootstrap admin account to owner so accounts stay reachable.
+        has_owner = session.scalars(
+            select(UserRow).where(UserRow.role == ROLE_OWNER).limit(1)
+        ).first()
+        if has_owner is None:
+            seed = session.scalars(
+                select(UserRow).where(UserRow.username == settings.auth_admin_username)
+            ).first()
+            target = seed or existing
+            if target is not None:
+                target.role = ROLE_OWNER
 
 
 def get_current_user(
@@ -119,8 +165,8 @@ def get_current_user(
     """FastAPI dependency requiring a valid Bearer JWT when auth is enabled."""
     settings = get_settings()
     if not settings.auth_enabled:
-        # Local/dev convenience: anonymous staff principal.
-        return AuthUser(id=0, username="anonymous", role="admin")
+        # Local/dev convenience: full-access owner principal.
+        return AuthUser(id=0, username="anonymous", role=ROLE_OWNER)
 
     if credentials is None or not credentials.credentials:
         raise HTTPException(
@@ -149,10 +195,46 @@ def get_optional_user(
     """Return the user when a valid token is present; None otherwise (no 401)."""
     settings = get_settings()
     if not settings.auth_enabled:
-        return AuthUser(id=0, username="anonymous", role="admin")
+        return AuthUser(id=0, username="anonymous", role=ROLE_OWNER)
     if credentials is None or not credentials.credentials:
         return None
     try:
         return decode_access_token(credentials.credentials)
     except HTTPException:
         return None
+
+
+def require_write(
+    user: Annotated[AuthUser, Depends(get_current_user)],
+) -> AuthUser:
+    """Dependency: reject read-only (staff) principals on mutating endpoints."""
+    if not user.can_write:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your role is read-only. Ask an admin or owner to make changes.",
+        )
+    return user
+
+
+def require_account_admin(
+    user: Annotated[AuthUser, Depends(get_current_user)],
+) -> AuthUser:
+    """Dependency: only owners may add/edit/delete accounts."""
+    if not user.can_manage_accounts:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the owner role can manage accounts.",
+        )
+    return user
+
+
+def require_account_viewer(
+    user: Annotated[AuthUser, Depends(get_current_user)],
+) -> AuthUser:
+    """Dependency: owner + admin may view the account list."""
+    if not user.can_view_accounts:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view accounts.",
+        )
+    return user

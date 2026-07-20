@@ -4,7 +4,7 @@ import { LANGUAGE_LABELS, type Language } from '@/lib/i18n'
 
 import styles from './AppShell.module.css'
 
-export type AppPageId = 'audit' | 'planogram' | 'tickets' | 'chat' | 'database'
+export type AppPageId = 'audit' | 'planogram' | 'tickets' | 'chat' | 'database' | 'accounts'
 
 export interface AppPage {
   id: AppPageId

@@ -27,6 +27,9 @@ const PASTE_FALLBACK_NUDGE = 0.03
 
 interface PlanogramPanelProps {
   text: (typeof UI_TEXT)[Language]['planogram']
+  /** When false the current user is read-only (staff): hide create/edit/delete/activate. */
+  canWrite?: boolean
+  readOnlyNotice?: string
 }
 
 interface DraftState {
@@ -238,7 +241,7 @@ function loadImageSize(dataUrl: string): Promise<{ width: number; height: number
   })
 }
 
-export function PlanogramPanel({ text }: PlanogramPanelProps) {
+export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: PlanogramPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const [planograms, setPlanograms] = useState<Planogram[]>([])
@@ -1161,12 +1164,15 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
           <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => void refresh()}>
             {busy ? text.loading : text.refresh}
           </button>
-          <button type="button" className={styles.primaryButton} disabled={busy} onClick={startCreate}>
-            {text.addNew}
-          </button>
+          {canWrite ? (
+            <button type="button" className={styles.primaryButton} disabled={busy} onClick={startCreate}>
+              {text.addNew}
+            </button>
+          ) : null}
         </div>
       </header>
 
+      {!canWrite && readOnlyNotice ? <p className={styles.statusLine}>{readOnlyNotice}</p> : null}
       {errorMessage ? <p className={styles.errorLine}>{errorMessage}</p> : null}
       {statusMessage ? <p className={styles.statusLine}>{statusMessage}</p> : null}
 
@@ -1174,9 +1180,11 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
         <div className={styles.emptyState}>
           <h3 className={styles.emptyTitle}>{text.emptyTitle}</h3>
           <p className={styles.emptyCopy}>{text.emptyCopy}</p>
-          <button type="button" className={styles.primaryButton} onClick={startCreate}>
-            {text.addNew}
-          </button>
+          {canWrite ? (
+            <button type="button" className={styles.primaryButton} onClick={startCreate}>
+              {text.addNew}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className={styles.list}>
@@ -1217,33 +1225,39 @@ export function PlanogramPanel({ text }: PlanogramPanelProps) {
                       .replace('{filled}', String(filled))}
                   </p>
                   <p className={styles.cardDescription}>{planogram.description || text.noDescription}</p>
-                  <div className={styles.cardActions}>
-                    {!isActive ? (
+                  {canWrite ? (
+                    <div className={styles.cardActions}>
+                      {!isActive ? (
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          disabled={busy}
+                          onClick={() => void handleActivate(planogram.id)}
+                        >
+                          {text.useThis}
+                        </button>
+                      ) : (
+                        <button type="button" className={styles.primaryButton} disabled>
+                          {text.inUse}
+                        </button>
+                      )}
+                      <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => startEdit(planogram)}>
+                        {text.edit}
+                      </button>
                       <button
                         type="button"
-                        className={styles.primaryButton}
+                        className={styles.ghostButton}
                         disabled={busy}
-                        onClick={() => void handleActivate(planogram.id)}
+                        onClick={() => void handleDelete(planogram.id)}
                       >
-                        {text.useThis}
+                        {text.delete}
                       </button>
-                    ) : (
-                      <button type="button" className={styles.primaryButton} disabled>
-                        {text.inUse}
-                      </button>
-                    )}
-                    <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => startEdit(planogram)}>
-                      {text.edit}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.ghostButton}
-                      disabled={busy}
-                      onClick={() => void handleDelete(planogram.id)}
-                    >
-                      {text.delete}
-                    </button>
-                  </div>
+                    </div>
+                  ) : isActive ? (
+                    <div className={styles.cardActions}>
+                      <span className={styles.badge}>{text.inUse}</span>
+                    </div>
+                  ) : null}
                 </div>
               </article>
             )

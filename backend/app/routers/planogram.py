@@ -15,7 +15,7 @@ from app.schemas.planogram import (
     PlanogramMatchResult,
     PlanogramUpdate,
 )
-from app.services.auth import AuthUser, get_current_user
+from app.services.auth import AuthUser, get_current_user, require_write
 from app.services.planogram_match import match_planogram
 from app.services.planogram_store import get_planogram_store
 from app.services.store import get_store
@@ -47,7 +47,7 @@ async def list_planograms(
 @router.put("/active", response_model=ActivePlanogramResult)
 async def set_active_planogram(
     payload: ActivePlanogramBody,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> ActivePlanogramResult:
     """Must be registered before ``/{planogram_id}`` so ``active`` is not captured as an id."""
     store = get_planogram_store()
@@ -61,7 +61,7 @@ async def set_active_planogram(
 @router.post("", response_model=Planogram, status_code=status.HTTP_201_CREATED)
 async def create_planogram(
     payload: PlanogramCreate,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> Planogram:
     if not payload.name.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Planogram name is required.")
@@ -90,7 +90,7 @@ async def get_planogram(
 async def update_planogram(
     planogram_id: str,
     payload: PlanogramUpdate,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> Planogram:
     try:
         planogram = get_planogram_store().update(planogram_id, payload)
@@ -107,7 +107,7 @@ async def update_planogram(
 @router.delete("/{planogram_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_planogram(
     planogram_id: str,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> None:
     try:
         get_planogram_store().delete(planogram_id)
@@ -119,7 +119,7 @@ async def delete_planogram(
 async def match_planogram_detections(
     planogram_id: str,
     payload: PlanogramMatchRequest,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> PlanogramMatchResult:
     planogram = get_planogram_store().get(planogram_id)
     if planogram is None:

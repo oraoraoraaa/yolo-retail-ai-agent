@@ -7,7 +7,16 @@ export type {
   AuditStepStatus,
 } from './audit'
 export { AUDIT_PIPELINE_STEPS, createInitialAuditSteps } from './audit'
-export type { AuthMe, AuthStatus, LoginResult } from './auth'
+export type {
+  AuthMe,
+  AuthStatus,
+  LoginResult,
+  StaffAccount,
+  StaffAccountCreatePayload,
+  StaffAccountListResult,
+  StaffAccountUpdatePayload,
+  UserRole,
+} from './auth'
 export type {
   ChatAttachment,
   ChatMessage,

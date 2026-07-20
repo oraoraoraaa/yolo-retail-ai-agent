@@ -36,6 +36,9 @@ DEFAULT_ROLES: list[dict[str, str]] = [
     {"id": "floor_staff", "label": "Floor staff"},
     {"id": "backroom", "label": "Backroom"},
     {"id": "manager", "label": "Manager"},
+    # Store-wide broadcast channel. Not a ticket assignee — used only to notify
+    # everyone (e.g. an empty facing awaiting backroom replenishment).
+    {"id": "announcement", "label": "Announcement"},
 ]
 
 # Fixed issue types (not user-editable). Values are default assignee role ids.
@@ -46,6 +49,8 @@ DEFAULT_ISSUE_ROLE_MAP: dict[str, list[str]] = {
     "shelf_empty": ["floor_staff"],
     "camera_issue": ["floor_staff", "manager"],
     "misplaced": ["floor_staff"],
+    # Store-wide broadcast target for empty-facing-awaiting-replenishment.
+    "shelf_empty_announcement": ["announcement"],
 }
 
 FIXED_ISSUE_TYPES: list[str] = [

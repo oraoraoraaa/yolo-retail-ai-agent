@@ -16,7 +16,7 @@ from app.schemas.database import (
     DatabaseRecordType,
 )
 from app.services import get_store
-from app.services.auth import AuthUser, get_current_user
+from app.services.auth import AuthUser, get_current_user, require_write
 from app.services.backup import export_backup_zip, restore_backup_zip, validate_backup_zip
 
 router = APIRouter(prefix="/api/v1/database", tags=["database"])
@@ -46,7 +46,7 @@ async def query_records(
 
 @router.delete("/records", response_model=DatabaseClearResult)
 async def clear_records(
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> DatabaseClearResult:
     """Delete all database-page records (audits/sku/inventory/chat).
 
@@ -75,7 +75,7 @@ async def get_record(
 
 @router.get("/backup")
 async def download_backup(
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> Response:
     """Export the whole system state (DB tables + media) as a zip archive."""
     try:
@@ -97,7 +97,7 @@ async def download_backup(
 
 @router.post("/backup/restore", response_model=BackupRestoreResult)
 async def restore_backup(
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
     file: UploadFile = File(...),
 ) -> BackupRestoreResult:
     """Validate and restore a previously exported backup zip.

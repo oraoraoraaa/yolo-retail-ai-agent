@@ -19,7 +19,7 @@ from app.schemas.tickets import (
     WebhookSettings,
     WebhookTestRequest,
 )
-from app.services.auth import AuthUser, get_current_user
+from app.services.auth import AuthUser, get_current_user, require_write
 from app.services.closed_loop import get_closed_loop_agent
 from app.services.ticket_store import get_ticket_store
 from app.services.webhooks import (
@@ -32,10 +32,11 @@ router = APIRouter(tags=["tickets"])
 
 
 def _require_admin(user: AuthUser) -> None:
-    if user.role != "admin":
+    # Webhook / admin config is available to both owner and admin (write roles).
+    if not user.can_write:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin role required for webhook configuration.",
+            detail="Admin or owner role required for webhook configuration.",
         )
 
 
@@ -46,7 +47,7 @@ def _require_admin(user: AuthUser) -> None:
 
 @router.delete("/api/v1/tickets", response_model=TicketClearResult)
 async def clear_tickets(
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> TicketClearResult:
     """Wipe the action-ticket board. Leaves planograms, users, and DB records."""
     deleted = get_ticket_store().clear_all()
@@ -90,7 +91,7 @@ async def get_ticket(
 @router.post("/api/v1/tickets", response_model=Ticket, status_code=status.HTTP_201_CREATED)
 async def create_ticket_manual(
     payload: TicketCreateManual,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> Ticket:
     return get_ticket_store().create(
         issue_type=payload.issue_type,
@@ -111,7 +112,7 @@ async def create_ticket_manual(
 async def update_ticket_status(
     ticket_id: str,
     payload: TicketStatusUpdate,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> Ticket:
     ticket = get_ticket_store().update_status(
         ticket_id,
@@ -126,7 +127,7 @@ async def update_ticket_status(
 @router.post("/api/v1/tickets/{ticket_id}/dispatch", response_model=dict[str, Any])
 async def redispatch_ticket(
     ticket_id: str,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
     language: str | None = Query(default=None),
 ) -> dict[str, Any]:
     from app.services.webhooks import dispatch_ticket
@@ -160,7 +161,7 @@ async def redispatch_ticket(
 @router.post("/api/v1/agent/closed-loop/run", response_model=ClosedLoopRunResult)
 async def run_closed_loop(
     payload: ClosedLoopRunRequest,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> ClosedLoopRunResult:
     """Detect → Decide → Dispatch over a shelf snapshot."""
     agent = get_closed_loop_agent()
@@ -182,7 +183,7 @@ async def run_closed_loop(
 async def verify_ticket_loop(
     ticket_id: str,
     payload: VerifyTicketRequest,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> VerifyTicketResult:
     """After ticket done: re-scan shelf, verify closed or escalate."""
     agent = get_closed_loop_agent()

@@ -65,6 +65,13 @@ class Finding:
     notify_only: bool = False
     # All roles this finding should notify (primary is assignee_role).
     assignee_roles: list[str] = field(default_factory=list)
+    # Broadcast companion: when True, a store-wide announcement is pushed the
+    # first time this finding's ticket is created (not on later re-detections),
+    # so everyone knows about an empty facing awaiting replenishment.
+    announce: bool = False
+    announce_title: str = ""
+    announce_description: str = ""
+    announce_roles: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         roles = list(self.assignee_roles or [])
@@ -288,7 +295,67 @@ def extract_findings(
         label = item_name or sku or slot_id or "SKU"
         facing_count = len(group["items"])
 
-        # shelf_empty: gap facing matches planogram item → floor staff
+        # Rule: a gap facing that matches a planogram item with EMPTY stock
+        # (planogram stock <= 0) is a backroom replenishment case only.
+        #   → open exactly ONE ticket, assigned to backroom (out_of_stock)
+        #   → broadcast a store-wide announcement so everyone knows the facing
+        #     is empty and awaiting replenishment
+        #   → do NOT open a floor_staff shelf_empty ticket
+        empty_stock = stock is not None and stock <= 0
+
+        if empty_stock:
+            oos_roles = _roles_for_issue("out_of_stock", settings)
+            oos_title = f"缺货：{label}" if zh else f"Out of stock: {label}"
+            oos_desc = (
+                f"商品「{label}」计划库存为 0（{facing_count} 个 facing 为空）。请后仓补货或订货。"
+                if zh
+                else f"Item '{label}' planogram stock is 0 "
+                f"({facing_count} empty facing(s)). Restock from backroom or reorder."
+            )
+            announce_roles = _roles_for_issue("shelf_empty_announcement", settings)
+            announce_title = (
+                f"货架空位待补货：{label}" if zh else f"Empty facing awaiting replenishment: {label}"
+            )
+            announce_desc = (
+                f"「{label}」的空位已匹配到计划图，库存为 0，已派单给后仓补货。"
+                f"（货架：{shelf or '—'}，{facing_count} 个 facing）"
+                if zh
+                else f"The empty facing for '{label}' matches the planogram and stock is 0. "
+                f"A backroom replenishment ticket has been dispatched. "
+                f"(Shelf: {shelf or '—'}, {facing_count} facing(s).)"
+            )
+            findings.append(
+                Finding(
+                    issue_type="out_of_stock",
+                    priority="critical",
+                    assignee_role=oos_roles[0],
+                    assignee_roles=oos_roles,
+                    title=oos_title,
+                    description=oos_desc,
+                    sku=sku,
+                    item_name=item_name,
+                    shelf_label=shelf,
+                    planogram_id=planogram_id_str,
+                    slot_id=slot_id,
+                    evidence={
+                        "missingItems": group["items"],
+                        "facingCount": facing_count,
+                        "planogramStock": stock,
+                        "slotIds": slot_ids,
+                        "assigneeRoles": oos_roles,
+                    },
+                    fingerprint=_fingerprint("out_of_stock", planogram_id_str, key),
+                    announce=True,
+                    announce_title=announce_title,
+                    announce_description=announce_desc,
+                    announce_roles=announce_roles,
+                )
+            )
+            # Empty-stock facing: only the backroom ticket, no floor_staff ticket.
+            continue
+
+        # Otherwise the gap matches a planogram item that still has stock on
+        # hand → this is a floor-facing / restock-from-shelf task (floor staff).
         shelf_roles = _roles_for_issue("shelf_empty", settings)
         shelf_title = f"货架空位：{label}" if zh else f"Shelf empty: {label}"
         shelf_desc = (
@@ -322,40 +389,6 @@ def extract_findings(
                 fingerprint=_fingerprint("shelf_empty", planogram_id_str, key),
             )
         )
-
-        # out_of_stock: planogram stock is 0 → backroom (can co-exist with shelf_empty)
-        if stock is not None and stock <= 0:
-            oos_roles = _roles_for_issue("out_of_stock", settings)
-            oos_title = f"缺货：{label}" if zh else f"Out of stock: {label}"
-            oos_desc = (
-                f"商品「{label}」计划库存为 0（{facing_count} 个 facing 为空）。请后仓补货或订货。"
-                if zh
-                else f"Item '{label}' planogram stock is 0 "
-                f"({facing_count} empty facing(s)). Restock from backroom or reorder."
-            )
-            findings.append(
-                Finding(
-                    issue_type="out_of_stock",
-                    priority="critical",
-                    assignee_role=oos_roles[0],
-                    assignee_roles=oos_roles,
-                    title=oos_title,
-                    description=oos_desc,
-                    sku=sku,
-                    item_name=item_name,
-                    shelf_label=shelf,
-                    planogram_id=planogram_id_str,
-                    slot_id=slot_id,
-                    evidence={
-                        "missingItems": group["items"],
-                        "facingCount": facing_count,
-                        "planogramStock": stock,
-                        "slotIds": slot_ids,
-                        "assigneeRoles": oos_roles,
-                    },
-                    fingerprint=_fingerprint("out_of_stock", planogram_id_str, key),
-                )
-            )
 
     # 3) Low stock — severity bands, one ticket per SKU (min stock across facings).
     low_stock_by_sku: dict[str, dict[str, Any]] = {}
@@ -589,6 +622,8 @@ class LoopState:
     dispatched: list[dict[str, Any]] = field(default_factory=list)
     skipped: list[dict[str, Any]] = field(default_factory=list)
     notifications: list[dict[str, Any]] = field(default_factory=list)
+    # Announcements queued from findings that opened a NEW ticket this pass.
+    pending_announcements: list[Finding] = field(default_factory=list)
     narrative: str = ""
     stage: Stage = "detect"
 
@@ -719,6 +754,12 @@ class ClosedLoopAgent:
                 note="Created by closed-loop agent",
             )
             state.tickets_created.append(ticket)
+            # Only broadcast an announcement the first time a ticket is opened
+            # for this problem (new ticket, not a dedupe re-detection), so the
+            # same empty facing is never announced more than once while the
+            # backroom ticket stays open.
+            if finding.announce:
+                state.pending_announcements.append(finding)
         return state
 
     async def _node_dispatch(self, state: LoopState) -> LoopState:
@@ -752,6 +793,41 @@ class ClosedLoopAgent:
                 annotated_image=annotated,
                 settings=settings,
                 evidence={**(finding.evidence or {}), "language": state.language},
+                language=state.language,
+            )
+            state.notifications.append(result)
+
+        # Store-wide announcements for newly-opened empty-facing tickets.
+        # These are broadcast to the announcement channel (not a ticket) so the
+        # whole store knows an empty facing is awaiting backroom replenishment.
+        for finding in state.pending_announcements:
+            if not state.do_dispatch:
+                state.skipped.append(
+                    {
+                        "reason": "dispatch_disabled",
+                        "issueType": "shelf_empty_announcement",
+                        "title": finding.announce_title or finding.title,
+                    }
+                )
+                continue
+            roles = list(finding.announce_roles or ["announcement"])
+            result = await dispatch_notification(
+                title=finding.announce_title or finding.title,
+                description=finding.announce_description or finding.description,
+                issue_type="shelf_empty_announcement",
+                priority=finding.priority,
+                assignee_role=roles[0],
+                assignee_roles=roles,
+                sku=finding.sku,
+                item_name=finding.item_name,
+                shelf_label=finding.shelf_label,
+                annotated_image=annotated,
+                settings=settings,
+                evidence={
+                    "announcement": True,
+                    "backroomTicketFingerprint": finding.fingerprint,
+                    "language": state.language,
+                },
                 language=state.language,
             )
             state.notifications.append(result)

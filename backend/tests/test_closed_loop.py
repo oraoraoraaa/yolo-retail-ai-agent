@@ -147,12 +147,17 @@ def test_extract_findings_sku_dedupe_and_dual_tickets() -> None:
     for finding in findings:
         by_type.setdefault(finding.issue_type, []).append(finding)
 
-    # gap facings with stock 0 → both shelf_empty and out_of_stock, one each for SKU-1
-    assert len(by_type.get("shelf_empty", [])) == 1
+    # gap facings matched to planogram with stock 0 → ONLY the backroom
+    # out_of_stock ticket (no floor_staff shelf_empty), plus a broadcast
+    # announcement companion. One ticket per SKU-1.
+    assert len(by_type.get("shelf_empty", [])) == 0
     assert len(by_type.get("out_of_stock", [])) == 1
-    assert by_type["shelf_empty"][0].assignee_role == "floor_staff"
-    assert by_type["out_of_stock"][0].assignee_role == "backroom"
-    assert by_type["shelf_empty"][0].sku == "SKU-1"
+    oos = by_type["out_of_stock"][0]
+    assert oos.assignee_role == "backroom"
+    assert oos.sku == "SKU-1"
+    # The single backroom ticket also broadcasts a store-wide announcement.
+    assert oos.announce is True
+    assert oos.announce_roles == ["announcement"]
     # different SKU still on shelf with low stock → one low_stock for SKU-2
     assert len(by_type.get("low_stock", [])) == 1
     assert by_type["low_stock"][0].priority == "high"  # stock 15 <= 50
@@ -503,3 +508,84 @@ def test_audit_analyze_detections_returns_ticket_ids(monkeypatch: pytest.MonkeyP
     assert isinstance(body["ticketIds"], list)
     assert body["ticketIds"]
     assert body.get("closedLoopNarrative")
+
+
+@pytest.mark.asyncio
+async def test_empty_facing_backroom_only_and_announce_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty stock + planogram match → single backroom ticket + one announcement.
+
+    - Exactly one ticket (out_of_stock, backroom); no floor_staff shelf_empty.
+    - A store-wide announcement is broadcast once when the ticket opens.
+    - A second identical audit must NOT open a duplicate ticket, and must NOT
+      re-announce (announcement fires only on new-ticket creation).
+    """
+    dispatched_tickets: list[Any] = []
+    announcements: list[dict[str, Any]] = []
+
+    async def fake_dispatch(ticket, settings=None, **kwargs):  # type: ignore[no-untyped-def]
+        dispatched_tickets.append(ticket)
+        return {"ok": True, "channel": "slack", "ticketId": ticket.id, "skipped": False}
+
+    async def fake_notify(**kwargs):  # type: ignore[no-untyped-def]
+        announcements.append(kwargs)
+        return {"ok": True, "skipped": False, "issueType": kwargs.get("issue_type")}
+
+    monkeypatch.setattr("app.services.closed_loop.dispatch_ticket", fake_dispatch)
+    monkeypatch.setattr("app.services.closed_loop.dispatch_notification", fake_notify)
+
+    vision = _vision(total=1, gaps=1, products=0)
+    planogram = {
+        "planogramId": "pg-9",
+        "planogramName": "Bay Z",
+        "missingItems": [
+            {"slotId": "s1", "itemName": "Cola", "sku": "C-1", "itemStock": 0},
+        ],
+        "matches": [],
+    }
+
+    agent = get_closed_loop_agent()
+    first = await agent.run(vision, planogram, language="en", dispatch=True, dedupe=True)
+
+    # Exactly one ticket, backroom, out_of_stock. No floor_staff shelf_empty.
+    assert len(first.tickets_created) == 1
+    ticket = first.tickets_created[0]
+    assert ticket.issue_type == "out_of_stock"
+    assert ticket.assignee_role == "backroom"
+    assert not any(t.issue_type == "shelf_empty" for t in first.tickets_created)
+
+    # One store-wide announcement broadcast to the announcement channel.
+    announce_calls = [
+        a for a in announcements if a.get("issue_type") == "shelf_empty_announcement"
+    ]
+    assert len(announce_calls) == 1
+    assert "announcement" in (announce_calls[0].get("assignee_roles") or [])
+
+    # Second identical audit: no duplicate ticket, no second announcement.
+    announcements.clear()
+    second = await agent.run(vision, planogram, language="en", dispatch=True, dedupe=True)
+    assert not second.tickets_created
+    assert not any(
+        a.get("issue_type") == "shelf_empty_announcement" for a in announcements
+    )
+
+
+def test_gap_with_stock_still_floor_staff() -> None:
+    """A matched gap whose planogram stock is > 0 stays a floor_staff task."""
+    vision = _vision(total=1, gaps=1, products=0)
+    planogram = {
+        "planogramId": "pg-3",
+        "planogramName": "Bay B",
+        "missingItems": [
+            {"slotId": "s1", "itemName": "Chips", "sku": "CH-1", "itemStock": 12},
+        ],
+        "matches": [],
+    }
+    findings = extract_findings(vision, planogram, language="en")
+    by_type = {f.issue_type for f in findings}
+    assert "shelf_empty" in by_type
+    assert "out_of_stock" not in by_type
+    shelf = next(f for f in findings if f.issue_type == "shelf_empty")
+    assert shelf.assignee_role == "floor_staff"
+    assert shelf.announce is False

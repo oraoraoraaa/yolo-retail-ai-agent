@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { fetchAuthStatus, login as apiLogin } from '@/api/auth'
+import { fetchAuthMe, fetchAuthStatus, login as apiLogin } from '@/api/auth'
 import {
   clearAuthSession,
   getAuthToken,
@@ -12,8 +12,12 @@ export interface AuthState {
   status: 'loading' | 'ready'
   authEnabled: boolean
   authenticated: boolean
+  userId: number | null
   username: string | null
   role: string | null
+  canWrite: boolean
+  canViewAccounts: boolean
+  canManageAccounts: boolean
   errorMessage: string | null
 }
 
@@ -21,13 +25,55 @@ const INITIAL: AuthState = {
   status: 'loading',
   authEnabled: false,
   authenticated: false,
+  userId: null,
   username: null,
   role: null,
+  canWrite: false,
+  canViewAccounts: false,
+  canManageAccounts: false,
   errorMessage: null,
+}
+
+/** Local fallback derivation when /me is unreachable (keeps UI usable). */
+function permsFromRole(role: string | null): {
+  canWrite: boolean
+  canViewAccounts: boolean
+  canManageAccounts: boolean
+} {
+  const r = (role || '').toLowerCase()
+  if (r === 'owner') {
+    return { canWrite: true, canViewAccounts: true, canManageAccounts: true }
+  }
+  if (r === 'admin') {
+    return { canWrite: true, canViewAccounts: true, canManageAccounts: false }
+  }
+  // staff / unknown → read-only
+  return { canWrite: false, canViewAccounts: false, canManageAccounts: false }
 }
 
 export function useAuth() {
   const [state, setState] = useState<AuthState>(INITIAL)
+
+  const applyPermissions = useCallback(
+    async (role: string | null, username: string | null) => {
+      // Prefer authoritative flags from the backend; fall back to role map.
+      try {
+        const me = await fetchAuthMe()
+        setState((previous) => ({
+          ...previous,
+          userId: me.id ?? previous.userId,
+          username: me.username ?? username,
+          role: me.role ?? role,
+          canWrite: me.canWrite,
+          canViewAccounts: me.canViewAccounts,
+          canManageAccounts: me.canManageAccounts,
+        }))
+      } catch {
+        setState((previous) => ({ ...previous, ...permsFromRole(role) }))
+      }
+    },
+    [],
+  )
 
   const refresh = useCallback(async () => {
     setState((previous) => ({ ...previous, status: 'loading', errorMessage: null }))
@@ -35,28 +81,36 @@ export function useAuth() {
       const status = await fetchAuthStatus()
       if (!status.authEnabled) {
         const stored = getStoredAuthUser()
+        const role = status.role ?? stored?.role ?? 'owner'
         setState({
           status: 'ready',
           authEnabled: false,
           authenticated: true,
+          userId: null,
           username: status.username ?? stored?.username ?? 'anonymous',
-          role: status.role ?? stored?.role ?? 'admin',
+          role,
+          ...permsFromRole(role),
           errorMessage: null,
         })
+        void applyPermissions(role, status.username ?? stored?.username ?? null)
         return
       }
 
       const token = getAuthToken()
       const stored = getStoredAuthUser()
       if (status.authenticated && token) {
+        const role = status.role ?? stored?.role ?? null
         setState({
           status: 'ready',
           authEnabled: true,
           authenticated: true,
+          userId: null,
           username: status.username ?? stored?.username ?? null,
-          role: status.role ?? stored?.role ?? null,
+          role,
+          ...permsFromRole(role),
           errorMessage: null,
         })
+        void applyPermissions(role, status.username ?? stored?.username ?? null)
         return
       }
 
@@ -69,8 +123,12 @@ export function useAuth() {
         status: 'ready',
         authEnabled: true,
         authenticated: false,
+        userId: null,
         username: null,
         role: null,
+        canWrite: false,
+        canViewAccounts: false,
+        canManageAccounts: false,
         errorMessage: null,
       })
     } catch (error) {
@@ -79,12 +137,16 @@ export function useAuth() {
         status: 'ready',
         authEnabled: false,
         authenticated: true,
+        userId: null,
         username: 'offline',
-        role: 'admin',
+        role: 'owner',
+        canWrite: true,
+        canViewAccounts: true,
+        canManageAccounts: true,
         errorMessage: error instanceof Error ? error.message : 'Auth status unavailable',
       })
     }
-  }, [])
+  }, [applyPermissions])
 
   useEffect(() => {
     void refresh()
@@ -94,14 +156,17 @@ export function useAuth() {
     setState((previous) => ({ ...previous, errorMessage: null }))
     try {
       const result = await apiLogin(username, password)
-      setState({
+      setState((previous) => ({
+        ...previous,
         status: 'ready',
         authEnabled: true,
         authenticated: true,
         username: result.username,
         role: result.role,
+        ...permsFromRole(result.role),
         errorMessage: null,
-      })
+      }))
+      void applyPermissions(result.role, result.username)
       return true
     } catch (error) {
       const message =
@@ -126,6 +191,9 @@ export function useAuth() {
       authenticated: previous.authEnabled ? false : true,
       username: previous.authEnabled ? null : previous.username,
       role: previous.authEnabled ? null : previous.role,
+      canWrite: previous.authEnabled ? false : previous.canWrite,
+      canViewAccounts: previous.authEnabled ? false : previous.canViewAccounts,
+      canManageAccounts: previous.authEnabled ? false : previous.canManageAccounts,
       errorMessage: null,
     }))
   }

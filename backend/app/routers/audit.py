@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from app.config import get_settings
 from app.schemas.audit import AuditAnalysisResult, DetectionAgentRequest
 from app.services import get_agent, get_detector, get_store
-from app.services.auth import AuthUser, get_current_user
+from app.services.auth import AuthUser, require_write
 from app.services.closed_loop import get_closed_loop_agent
 from app.services.media import decode_image_payload
 
@@ -81,7 +81,7 @@ async def _run_closed_loop_safe(
 
 @router.post("/analyze", response_model=AuditAnalysisResult)
 async def analyze_shelf_image(
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
     image: UploadFile = File(...),
 ) -> AuditAnalysisResult:
     """Run gap detection on an uploaded shelf image via model-local."""
@@ -157,7 +157,7 @@ async def analyze_shelf_image(
 @router.post("/analyze-detections", response_model=AuditAnalysisResult)
 async def analyze_detection_json(
     payload: DetectionAgentRequest,
-    _user: Annotated[AuthUser, Depends(get_current_user)],
+    _user: Annotated[AuthUser, Depends(require_write)],
 ) -> AuditAnalysisResult:
     """Analyze local vision-model JSON with the retail agent.
 

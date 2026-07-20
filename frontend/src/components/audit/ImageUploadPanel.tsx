@@ -53,6 +53,9 @@ interface ImageUploadPanelProps {
   text: (typeof UI_TEXT)[Language]['audit']
   language: Language
   audit: AuditController
+  /** When false the current user is read-only (staff): can view cameras/streams
+   *  but cannot run audits or start monitoring. */
+  canWrite?: boolean
 }
 
 function isAcceptedImage(file: File): boolean {
@@ -71,7 +74,7 @@ function stepStatusLabel(text: ImageUploadPanelProps['text'], status: string): s
   return text.stepPending
 }
 
-export function ImageUploadPanel({ text, language, audit }: ImageUploadPanelProps) {
+export function ImageUploadPanel({ text, language, audit, canWrite = true }: ImageUploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -378,14 +381,16 @@ export function ImageUploadPanel({ text, language, audit }: ImageUploadPanelProp
                     </label>
 
                     <div className={styles.blockActions}>
-                      <button
-                        type="button"
-                        className={monitoring ? styles.ghostButton : styles.primaryButton}
-                        onClick={() => toggleAuditing(camera.id)}
-                        disabled={!config.model}
-                      >
-                        {monitoring ? text.stopMonitor : text.startMonitoring}
-                      </button>
+                      {canWrite ? (
+                        <button
+                          type="button"
+                          className={monitoring ? styles.ghostButton : styles.primaryButton}
+                          onClick={() => toggleAuditing(camera.id)}
+                          disabled={!config.model}
+                        >
+                          {monitoring ? text.stopMonitor : text.startMonitoring}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={styles.ghostButton}
@@ -558,44 +563,46 @@ export function ImageUploadPanel({ text, language, audit }: ImageUploadPanelProp
           </select>
         </label>
 
-        <div className={styles.monitorActions}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={isBusy || !activeConfig.model}
-            onClick={() =>
-              audit.startMonitoring(
-                camera,
-                activeConfig.model,
-                activeConfig.intervalMs,
-                language,
-                activeConfig.planogramId || null,
-              )
-            }
-          >
-            {monitoringActive ? text.saveUpdate : text.save}
-          </button>
-          <button
-            type="button"
-            className={styles.ghostButton}
-            disabled={isBusy || !activeConfig.model}
-            onClick={() => {
-              // Show the annotated result of this manual analysis.
-              setViewMode('capture')
-              void audit.submitCameraCapture(camera, activeConfig.model, language, activeConfig.planogramId || null)
-            }}
-          >
-            {text.analyzeNow}
-          </button>
-          <button
-            type="button"
-            className={styles.ghostButton}
-            disabled={!monitoringActive}
-            onClick={() => audit.stopMonitoring(camera)}
-          >
-            {text.stopMonitor}
-          </button>
-        </div>
+        {canWrite ? (
+          <div className={styles.monitorActions}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isBusy || !activeConfig.model}
+              onClick={() =>
+                audit.startMonitoring(
+                  camera,
+                  activeConfig.model,
+                  activeConfig.intervalMs,
+                  language,
+                  activeConfig.planogramId || null,
+                )
+              }
+            >
+              {monitoringActive ? text.saveUpdate : text.save}
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              disabled={isBusy || !activeConfig.model}
+              onClick={() => {
+                // Show the annotated result of this manual analysis.
+                setViewMode('capture')
+                void audit.submitCameraCapture(camera, activeConfig.model, language, activeConfig.planogramId || null)
+              }}
+            >
+              {text.analyzeNow}
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              disabled={!monitoringActive}
+              onClick={() => audit.stopMonitoring(camera)}
+            >
+              {text.stopMonitor}
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {monitoringActive ? (
@@ -605,38 +612,40 @@ export function ImageUploadPanel({ text, language, audit }: ImageUploadPanelProp
         </p>
       ) : null}
 
-      <div
-        className={`${styles.dropzone} ${isDragging ? styles.dropzoneActive : ''}`}
-        onDragEnter={(event) => {
-          event.preventDefault()
-          setIsDragging(true)
-        }}
-        onDragOver={(event) => {
-          event.preventDefault()
-          setIsDragging(true)
-        }}
-        onDragLeave={(event) => {
-          event.preventDefault()
-          setIsDragging(false)
-        }}
-        onDrop={onDrop}
-      >
-        <input
-          ref={inputRef}
-          className={styles.fileInput}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          aria-label={text.uploadImageLabel}
-          disabled={isBusy}
-          onChange={onInputChange}
-        />
-        <div>
-          <p className={styles.dropTitle}>{text.dropTitle}</p>
-          <p className={styles.dropHint}>{text.dropHint}</p>
+      {canWrite ? (
+        <div
+          className={`${styles.dropzone} ${isDragging ? styles.dropzoneActive : ''}`}
+          onDragEnter={(event) => {
+            event.preventDefault()
+            setIsDragging(true)
+          }}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setIsDragging(true)
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault()
+            setIsDragging(false)
+          }}
+          onDrop={onDrop}
+        >
+          <input
+            ref={inputRef}
+            className={styles.fileInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            aria-label={text.uploadImageLabel}
+            disabled={isBusy}
+            onChange={onInputChange}
+          />
+          <div>
+            <p className={styles.dropTitle}>{text.dropTitle}</p>
+            <p className={styles.dropHint}>{text.dropHint}</p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      {state.previewUrl && state.fileName ? (
+      {canWrite && state.previewUrl && state.fileName ? (
         <div className={styles.previewMeta}>
           <p className={styles.fileName}>{state.fileName}</p>
           <div className={styles.actions}>

@@ -224,11 +224,13 @@ def _role_label(
         "floor_staff": "Floor staff",
         "backroom": "Backroom",
         "manager": "Manager",
+        "announcement": "Announcement",
     }
     labels_zh = {
         "floor_staff": "一线员工",
         "backroom": "后仓",
         "manager": "店长",
+        "announcement": "全员通知",
     }
     labels = labels_zh if zh else labels_en
     if role in labels:
@@ -276,6 +278,7 @@ def _issue_label(issue_type: str | None, *, language: str = "en") -> str:
         "low_stock": ("Low stock", "低库存"),
         "camera_issue": ("Camera issue", "摄像头异常"),
         "low_stock_warning": ("Low stock warning", "低库存预警"),
+        "shelf_empty_announcement": ("Empty facing announcement", "空位补货通知"),
     }
     if not issue_type:
         return "—"

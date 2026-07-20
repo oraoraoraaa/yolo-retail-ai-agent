@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import { AccountsPanel } from '@/components/accounts/AccountsPanel'
 import { LoginPanel } from '@/components/auth/LoginPanel'
 import { ImageUploadPanel } from '@/components/audit/ImageUploadPanel'
 import { ChatPanel } from '@/components/chat/ChatPanel'
@@ -25,33 +26,37 @@ function App() {
   const chat = useAgentChat()
   const text = UI_TEXT[language]
 
-  const pages: AppPage[] = [
-    {
-      id: 'audit',
-      label: text.pages.audit[0],
-      description: text.pages.audit[1],
-    },
-    {
-      id: 'planogram',
-      label: text.pages.planogram[0],
-      description: text.pages.planogram[1],
-    },
-    {
-      id: 'tickets',
-      label: text.pages.tickets[0],
-      description: text.pages.tickets[1],
-    },
-    {
-      id: 'chat',
-      label: text.pages.chat[0],
-      description: text.pages.chat[1],
-    },
-    {
-      id: 'database',
-      label: text.pages.database[0],
-      description: text.pages.database[1],
-    },
-  ]
+  // Owner + admin may make changes; staff is read-only. When auth is disabled
+  // (local/offline dev) everyone is treated as an owner.
+  const canWrite = !auth.authEnabled || auth.canWrite
+  const canViewAccounts = !auth.authEnabled || auth.canViewAccounts
+  const canManageAccounts = !auth.authEnabled || auth.canManageAccounts
+
+  const pages: AppPage[] = useMemo(() => {
+    const base: AppPage[] = [
+      { id: 'audit', label: text.pages.audit[0], description: text.pages.audit[1] },
+      { id: 'planogram', label: text.pages.planogram[0], description: text.pages.planogram[1] },
+      { id: 'tickets', label: text.pages.tickets[0], description: text.pages.tickets[1] },
+      { id: 'chat', label: text.pages.chat[0], description: text.pages.chat[1] },
+      { id: 'database', label: text.pages.database[0], description: text.pages.database[1] },
+    ]
+    if (canViewAccounts) {
+      base.push({
+        id: 'accounts',
+        label: text.pages.accounts[0],
+        description: text.pages.accounts[1],
+      })
+    }
+    return base
+  }, [text, canViewAccounts])
+
+  // If the active page becomes unavailable (e.g. staff can't see accounts),
+  // fall back to the audit page.
+  useEffect(() => {
+    if (!pages.some((page) => page.id === activePageId)) {
+      setActivePageId('audit')
+    }
+  }, [pages, activePageId])
 
   function updateLanguage(nextLanguage: Language): void {
     setLanguage(nextLanguage)
@@ -94,16 +99,20 @@ function App() {
       onLogout={auth.authEnabled ? auth.logout : undefined}
     >
       {activePageId === 'audit' ? (
-        <ImageUploadPanel text={text.audit} language={language} audit={audit} />
+        <ImageUploadPanel text={text.audit} language={language} audit={audit} canWrite={canWrite} />
       ) : null}
 
-      {activePageId === 'planogram' ? <PlanogramPanel text={text.planogram} /> : null}
+      {activePageId === 'planogram' ? (
+        <PlanogramPanel text={text.planogram} canWrite={canWrite} readOnlyNotice={text.readOnlyNotice} />
+      ) : null}
 
       {activePageId === 'tickets' ? (
         <TicketBoardPanel
           text={text.tickets}
           language={language}
-          isAdmin={!auth.authEnabled || auth.role === 'admin'}
+          isAdmin={canWrite}
+          canWrite={canWrite}
+          readOnlyNotice={text.readOnlyNotice}
         />
       ) : null}
 
@@ -117,7 +126,18 @@ function App() {
         />
       ) : null}
 
-      {activePageId === 'database' ? <DatabasePanel text={text.database} /> : null}
+      {activePageId === 'database' ? (
+        <DatabasePanel text={text.database} canWrite={canWrite} readOnlyNotice={text.readOnlyNotice} />
+      ) : null}
+
+      {activePageId === 'accounts' && canViewAccounts ? (
+        <AccountsPanel
+          text={text.accounts}
+          language={language}
+          canManage={canManageAccounts}
+          currentUserId={auth.userId}
+        />
+      ) : null}
     </AppShell>
   )
 }

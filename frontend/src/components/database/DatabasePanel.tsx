@@ -39,9 +39,12 @@ function mediaSrc(url: string | null | undefined): string | null {
 
 interface DatabasePanelProps {
   text: (typeof UI_TEXT)[Language]['database']
+  /** When false the current user is read-only (staff): hide clear/backup/restore. */
+  canWrite?: boolean
+  readOnlyNotice?: string
 }
 
-export function DatabasePanel({ text }: DatabasePanelProps) {
+export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: DatabasePanelProps) {
   const [keyword, setKeyword] = useState('')
   const [filter, setFilter] = useState<FilterValue>('all')
   const [records, setRecords] = useState<DatabaseRecord[]>([])
@@ -181,48 +184,54 @@ export function DatabasePanel({ text }: DatabasePanelProps) {
           <p className={styles.subtitle}>{text.subtitle}</p>
         </div>
         <div className={styles.headerActions ?? undefined} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button
-            className={styles.refreshButton}
-            type="button"
-            disabled={isLoading}
-            onClick={() => void onBackup()}
-          >
-            {text.backup}
-          </button>
-          <button
-            className={styles.refreshButton}
-            type="button"
-            disabled={isLoading}
-            onClick={() => restoreInputRef.current?.click()}
-          >
-            {text.restore}
-          </button>
-          <input
-            ref={restoreInputRef}
-            type="file"
-            accept=".zip,application/zip"
-            style={{ display: 'none' }}
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              event.target.value = ''
-              if (file) {
-                void onRestoreFile(file)
-              }
-            }}
-          />
-          <button
-            className={styles.closeButton}
-            type="button"
-            disabled={isLoading || records.length === 0}
-            onClick={() => void onClearAll()}
-          >
-            {text.clearAll}
-          </button>
+          {canWrite ? (
+            <>
+              <button
+                className={styles.refreshButton}
+                type="button"
+                disabled={isLoading}
+                onClick={() => void onBackup()}
+              >
+                {text.backup}
+              </button>
+              <button
+                className={styles.refreshButton}
+                type="button"
+                disabled={isLoading}
+                onClick={() => restoreInputRef.current?.click()}
+              >
+                {text.restore}
+              </button>
+              <input
+                ref={restoreInputRef}
+                type="file"
+                accept=".zip,application/zip"
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ''
+                  if (file) {
+                    void onRestoreFile(file)
+                  }
+                }}
+              />
+              <button
+                className={styles.closeButton}
+                type="button"
+                disabled={isLoading || records.length === 0}
+                onClick={() => void onClearAll()}
+              >
+                {text.clearAll}
+              </button>
+            </>
+          ) : null}
           <button className={styles.refreshButton} type="button" disabled={isLoading} onClick={() => void loadRecords()}>
             {isLoading ? text.loading : text.refresh}
           </button>
         </div>
       </header>
+
+      {!canWrite && readOnlyNotice ? <p className={styles.statusLine ?? styles.subtitle}>{readOnlyNotice}</p> : null}
 
       {statusLine ? <p className={styles.statusLine ?? styles.subtitle}>{statusLine}</p> : null}
 
