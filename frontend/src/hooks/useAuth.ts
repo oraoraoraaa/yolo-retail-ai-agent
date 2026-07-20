@@ -63,6 +63,26 @@ function isTrueOfflineMode(): boolean {
   return !getApiBaseUrl()
 }
 
+function signedInState(partial: {
+  authEnabled: boolean
+  username: string | null
+  role: string | null
+  userId?: number | null
+  errorMessage?: string | null
+}): AuthState {
+  const role = partial.role
+  return {
+    status: 'ready',
+    authEnabled: partial.authEnabled,
+    authenticated: true,
+    userId: partial.userId ?? null,
+    username: partial.username,
+    role,
+    ...permsFromRole(role),
+    errorMessage: partial.errorMessage ?? null,
+  }
+}
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>(INITIAL)
 
@@ -73,6 +93,7 @@ export function useAuth() {
         const me = await fetchAuthMe()
         setState((previous) => ({
           ...previous,
+          authenticated: true,
           userId: me.id ?? previous.userId,
           username: me.username ?? username,
           role: me.role ?? role,
@@ -80,8 +101,13 @@ export function useAuth() {
           canViewAccounts: me.canViewAccounts,
           canManageAccounts: me.canManageAccounts,
         }))
-      } catch {
+        return true
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          return false
+        }
         setState((previous) => ({ ...previous, ...permsFromRole(role) }))
+        return true
       }
     },
     [],
@@ -104,81 +130,105 @@ export function useAuth() {
 
   const refresh = useCallback(async () => {
     setState((previous) => ({ ...previous, status: 'loading', errorMessage: null }))
+    const token = getAuthToken()
+    const stored = getStoredAuthUser()
+
+    // Optimistic restore: keep the previous session visible while we re-check
+    // the backend so a refresh/reopen does not flash the login panel.
+    if (token && stored) {
+      setState(
+        signedInState({
+          authEnabled: true,
+          username: stored.username,
+          role: stored.role,
+        }),
+      )
+    }
+
     try {
       const status = await fetchAuthStatus()
       if (!status.authEnabled) {
-        const stored = getStoredAuthUser()
         const role = status.role ?? stored?.role ?? 'owner'
-        setState({
-          status: 'ready',
-          authEnabled: false,
-          authenticated: true,
-          userId: null,
-          username: status.username ?? stored?.username ?? 'anonymous',
-          role,
-          ...permsFromRole(role),
-          errorMessage: null,
-        })
+        setState(
+          signedInState({
+            authEnabled: false,
+            username: status.username ?? stored?.username ?? 'anonymous',
+            role,
+          }),
+        )
         void applyPermissions(role, status.username ?? stored?.username ?? null)
         return
       }
 
-      const token = getAuthToken()
-      const stored = getStoredAuthUser()
       if (status.authenticated && token) {
         const role = status.role ?? stored?.role ?? null
-        setState({
-          status: 'ready',
-          authEnabled: true,
-          authenticated: true,
-          userId: null,
-          username: status.username ?? stored?.username ?? null,
-          role,
-          ...permsFromRole(role),
-          errorMessage: null,
-        })
-        void applyPermissions(role, status.username ?? stored?.username ?? null)
+        setState(
+          signedInState({
+            authEnabled: true,
+            username: status.username ?? stored?.username ?? null,
+            role,
+          }),
+        )
+        const ok = await applyPermissions(role, status.username ?? stored?.username ?? null)
+        if (!ok) {
+          clearAuthSession()
+          forceLoginGate(null)
+        }
         return
       }
 
-      // Token present but status says not authenticated — clear stale session.
-      if (token && !status.authenticated) {
+      // Status said unauthenticated, but we still have a stored token — verify
+      // with /me before wiping the session (covers transient status glitches).
+      if (token && stored) {
+        const ok = await applyPermissions(stored.role, stored.username)
+        if (ok) {
+          setState(
+            signedInState({
+              authEnabled: true,
+              username: stored.username,
+              role: stored.role,
+            }),
+          )
+          return
+        }
+        clearAuthSession()
+      } else if (token && !status.authenticated) {
         clearAuthSession()
       }
 
-      setState({
-        status: 'ready',
-        authEnabled: true,
-        authenticated: false,
-        userId: null,
-        username: null,
-        role: null,
-        canWrite: false,
-        canViewAccounts: false,
-        canManageAccounts: false,
-        errorMessage: null,
-      })
+      forceLoginGate(null)
     } catch (error) {
       if (isTrueOfflineMode()) {
         // No backend origin configured — allow local stubs without a login gate.
-        setState({
-          status: 'ready',
-          authEnabled: false,
-          authenticated: true,
-          userId: null,
-          username: 'offline',
-          role: 'owner',
-          canWrite: true,
-          canViewAccounts: true,
-          canManageAccounts: true,
-          errorMessage: error instanceof Error ? error.message : 'Auth status unavailable',
-        })
+        setState(
+          signedInState({
+            authEnabled: false,
+            username: 'offline',
+            role: 'owner',
+            errorMessage: error instanceof Error ? error.message : 'Auth status unavailable',
+          }),
+        )
         return
       }
 
-      // Backend is configured but /auth/status failed (down, CORS, transient).
-      // Do NOT fall into "signed in as offline" — that hides LoginPanel while
-      // planograms/tickets still require a JWT and log 401s.
+      // Backend configured but /auth/status failed. Keep a stored session if
+      // /me still accepts the token; only force login when the token is dead.
+      if (token && stored) {
+        const ok = await applyPermissions(stored.role, stored.username)
+        if (ok) {
+          setState(
+            signedInState({
+              authEnabled: true,
+              username: stored.username,
+              role: stored.role,
+              errorMessage: null,
+            }),
+          )
+          return
+        }
+        clearAuthSession()
+      }
+
       forceLoginGate(
         error instanceof Error
           ? error.message
@@ -209,16 +259,13 @@ export function useAuth() {
     setState((previous) => ({ ...previous, errorMessage: null }))
     try {
       const result = await apiLogin(username, password)
-      setState((previous) => ({
-        ...previous,
-        status: 'ready',
-        authEnabled: true,
-        authenticated: true,
-        username: result.username,
-        role: result.role,
-        ...permsFromRole(result.role),
-        errorMessage: null,
-      }))
+      setState(
+        signedInState({
+          authEnabled: true,
+          username: result.username,
+          role: result.role,
+        }),
+      )
       void applyPermissions(result.role, result.username)
       return true
     } catch (error) {
@@ -230,6 +277,7 @@ export function useAuth() {
           : 'failed'
       setState((previous) => ({
         ...previous,
+        status: 'ready',
         authEnabled: true,
         authenticated: false,
         errorMessage: message,

@@ -844,7 +844,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
             </h2>
             <p className={styles.subtitle}>{text.editorSubtitle}</p>
           </div>
-          <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => setMode('list')}>
+          <button type="button" className={`${styles.ghostButton} glass-lens`} disabled={busy} onClick={() => setMode('list')}>
             {text.backToList}
           </button>
         </header>
@@ -883,7 +883,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                 <div className={styles.actions}>
                   <button
                     type="button"
-                    className={styles.ghostButton}
+                    className={`${styles.ghostButton} glass-lens`}
                     disabled={busy || !selectedSlot}
                     onClick={() => copySelectedSlot()}
                     title={text.copyShortcut}
@@ -892,7 +892,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                   </button>
                   <button
                     type="button"
-                    className={styles.ghostButton}
+                    className={`${styles.ghostButton} glass-lens`}
                     disabled={busy || !clipboardSlot}
                     onClick={() => pasteClipboardSlot('right')}
                     title={text.pasteShortcut}
@@ -901,7 +901,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                   </button>
                   <button
                     type="button"
-                    className={styles.ghostButton}
+                    className={`${styles.ghostButton} glass-lens`}
                     disabled={busy || !selectedSlot}
                     onClick={() => duplicateSelectedSlot('right')}
                     title={text.duplicateShortcut}
@@ -910,7 +910,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                   </button>
                   <button
                     type="button"
-                    className={styles.ghostButton}
+                    className={`${styles.ghostButton} glass-lens`}
                     disabled={busy || !selectedSlot}
                     onClick={() => {
                       deleteSelectedSlot()
@@ -922,7 +922,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                   </button>
                   <button
                     type="button"
-                    className={styles.ghostButton}
+                    className={`${styles.ghostButton} glass-lens`}
                     disabled={busy}
                     onClick={() => inputRef.current?.click()}
                   >
@@ -1092,7 +1092,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                   <div className={styles.slotActions}>
                     <button
                       type="button"
-                      className={styles.ghostButton}
+                      className={`${styles.ghostButton} glass-lens`}
                       disabled={busy}
                       onClick={() => copySelectedSlot()}
                       title={text.copyShortcut}
@@ -1101,7 +1101,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                     </button>
                     <button
                       type="button"
-                      className={styles.ghostButton}
+                      className={`${styles.ghostButton} glass-lens`}
                       disabled={busy || !clipboardSlot}
                       onClick={() => pasteClipboardSlot('right')}
                       title={text.pasteShortcut}
@@ -1110,7 +1110,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                     </button>
                     <button
                       type="button"
-                      className={styles.ghostButton}
+                      className={`${styles.ghostButton} glass-lens`}
                       disabled={busy}
                       onClick={() => duplicateSelectedSlot('right')}
                       title={text.duplicateShortcut}
@@ -1119,13 +1119,13 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                     </button>
                     <button
                       type="button"
-                      className={styles.ghostButton}
+                      className={`${styles.ghostButton} glass-lens`}
                       disabled={busy}
                       onClick={() => duplicateSelectedSlot('below')}
                     >
                       {text.duplicateBelow}
                     </button>
-                    <button type="button" className={styles.ghostButton} disabled={busy} onClick={deleteSelectedSlot}>
+                    <button type="button" className={`${styles.ghostButton} glass-lens`} disabled={busy} onClick={deleteSelectedSlot}>
                       {text.deleteRegion}
                     </button>
                   </div>
@@ -1135,7 +1135,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                   <p className={styles.emptyCopy}>{text.selectRegionHint}</p>
                   <button
                     type="button"
-                    className={styles.ghostButton}
+                    className={`${styles.ghostButton} glass-lens`}
                     disabled={busy || !clipboardSlot}
                     onClick={() => pasteClipboardSlot('right')}
                     title={text.pasteShortcut}
@@ -1151,10 +1151,10 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
           {statusMessage ? <p className={styles.statusLine}>{statusMessage}</p> : null}
 
           <div className={styles.footerActions}>
-            <button type="submit" className={styles.primaryButton} disabled={busy}>
+            <button type="submit" className={`${styles.primaryButton} glass-lens`} disabled={busy}>
               {busy ? text.saving : text.save}
             </button>
-            <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => setMode('list')}>
+            <button type="button" className={`${styles.ghostButton} glass-lens`} disabled={busy} onClick={() => setMode('list')}>
               {text.cancel}
             </button>
           </div>
@@ -1173,11 +1173,11 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
           <p className={styles.subtitle}>{text.subtitle}</p>
         </div>
         <div className={styles.actions}>
-          <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => void refresh()}>
+          <button type="button" className={`${styles.ghostButton} glass-lens`} disabled={busy} onClick={() => void refresh()}>
             {busy ? text.loading : text.refresh}
           </button>
           {canWrite ? (
-            <button type="button" className={styles.primaryButton} disabled={busy} onClick={startCreate}>
+            <button type="button" className={`${styles.primaryButton} glass-lens`} disabled={busy} onClick={startCreate}>
               {text.addNew}
             </button>
           ) : null}
@@ -1193,7 +1193,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
           <h3 className={styles.emptyTitle}>{text.emptyTitle}</h3>
           <p className={styles.emptyCopy}>{text.emptyCopy}</p>
           {canWrite ? (
-            <button type="button" className={styles.primaryButton} onClick={startCreate}>
+            <button type="button" className={`${styles.primaryButton} glass-lens`} onClick={startCreate}>
               {text.addNew}
             </button>
           ) : null}
@@ -1242,23 +1242,23 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
                       {!isActive ? (
                         <button
                           type="button"
-                          className={styles.primaryButton}
+                          className={`${styles.primaryButton} glass-lens`}
                           disabled={busy}
                           onClick={() => void handleActivate(planogram.id)}
                         >
                           {text.useThis}
                         </button>
                       ) : (
-                        <button type="button" className={styles.primaryButton} disabled>
+                        <button type="button" className={`${styles.primaryButton} glass-lens`} disabled>
                           {text.inUse}
                         </button>
                       )}
-                      <button type="button" className={styles.ghostButton} disabled={busy} onClick={() => startEdit(planogram)}>
+                      <button type="button" className={`${styles.ghostButton} glass-lens`} disabled={busy} onClick={() => startEdit(planogram)}>
                         {text.edit}
                       </button>
                       <button
                         type="button"
-                        className={styles.ghostButton}
+                        className={`${styles.ghostButton} glass-lens`}
                         disabled={busy}
                         onClick={() => void handleDelete(planogram.id)}
                       >

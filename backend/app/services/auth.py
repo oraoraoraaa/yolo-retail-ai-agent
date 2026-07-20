@@ -221,9 +221,18 @@ def get_optional_user(
     if credentials is None or not credentials.credentials:
         return None
     try:
-        return decode_access_token(credentials.credentials)
+        user = decode_access_token(credentials.credentials)
     except HTTPException:
         return None
+
+    # Mirror get_current_user: only treat active DB accounts as signed-in so a
+    # deleted/disabled user cannot keep a long-lived JWT session forever.
+    get_engine()
+    with get_session() as session:
+        row = session.get(UserRow, user.id)
+        if row is None or not row.is_active:
+            return None
+        return AuthUser(id=row.id, username=row.username, role=row.role)
 
 
 def require_write(

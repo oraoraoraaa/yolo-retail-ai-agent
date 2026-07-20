@@ -175,7 +175,7 @@ export function AccountsPanel({ text, canManage, currentUserId }: AccountsPanelP
         <div className={styles.headerActions}>
           {canManage ? (
             <button
-              className={`${styles.button} ${styles.primaryButton}`}
+              className={`${styles.button} ${styles.primaryButton} glass-lens`}
               type="button"
               disabled={isBusy}
               onClick={openCreate}
@@ -184,7 +184,7 @@ export function AccountsPanel({ text, canManage, currentUserId }: AccountsPanelP
             </button>
           ) : null}
           <button
-            className={styles.button}
+            className={`${styles.button} glass-lens`}
             type="button"
             disabled={isBusy}
             onClick={() => void loadAccounts()}
@@ -344,7 +344,7 @@ export function AccountsPanel({ text, canManage, currentUserId }: AccountsPanelP
 
             <div className={styles.cardActions}>
               <button
-                className={styles.button}
+                className={`${styles.button} glass-lens`}
                 type="button"
                 disabled={status === 'saving'}
                 onClick={() => setEditor(null)}
@@ -352,7 +352,7 @@ export function AccountsPanel({ text, canManage, currentUserId }: AccountsPanelP
                 {text.cancel}
               </button>
               <button
-                className={`${styles.button} ${styles.primaryButton}`}
+                className={`${styles.button} ${styles.primaryButton} glass-lens`}
                 type="submit"
                 disabled={status === 'saving'}
               >

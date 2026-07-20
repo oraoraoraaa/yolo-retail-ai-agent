@@ -294,7 +294,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
           </div>
           <button
             type="button"
-            className={styles.ghostButton}
+            className={`${styles.ghostButton} glass-lens`}
             onClick={() => void refreshCameras()}
             disabled={refreshing || loading}
           >
@@ -393,7 +393,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
                       ) : null}
                       <button
                         type="button"
-                        className={styles.ghostButton}
+                        className={`${styles.ghostButton} glass-lens`}
                         onClick={() => openCamera(camera.id)}
                       >
                         {text.openStream}
@@ -441,7 +441,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
     <section className={styles.panel} aria-labelledby="audit-panel-title">
       <header className={styles.headerRow}>
         <div className={styles.header}>
-          <button type="button" className={styles.backButton} onClick={closeCamera}>
+          <button type="button" className={`${styles.backButton} glass-lens`} onClick={closeCamera}>
             {text.backToCameras}
           </button>
           <h2 id="audit-panel-title" className={styles.title}>
@@ -454,7 +454,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
             <div className={styles.viewToggle} role="group" aria-label={text.viewToggleLabel}>
               <button
                 type="button"
-                className={`${styles.viewToggleButton} ${showCapture ? '' : styles.viewToggleActive}`}
+                className={`${styles.viewToggleButton} ${showCapture ? '' : styles.viewToggleActive} glass-lens`}
                 onClick={() => setViewMode('stream')}
                 aria-pressed={!showCapture}
               >
@@ -462,7 +462,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
               </button>
               <button
                 type="button"
-                className={`${styles.viewToggleButton} ${showCapture ? styles.viewToggleActive : ''}`}
+                className={`${styles.viewToggleButton} ${showCapture ? styles.viewToggleActive : ''} glass-lens`}
                 onClick={() => setViewMode('capture')}
                 aria-pressed={showCapture}
               >
@@ -567,7 +567,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
           <div className={styles.monitorActions}>
             <button
               type="button"
-              className={styles.primaryButton}
+              className={`${styles.primaryButton} glass-lens`}
               disabled={isBusy || !activeConfig.model}
               onClick={() =>
                 audit.startMonitoring(
@@ -583,7 +583,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
             </button>
             <button
               type="button"
-              className={styles.ghostButton}
+              className={`${styles.ghostButton} glass-lens`}
               disabled={isBusy || !activeConfig.model}
               onClick={() => {
                 // Show the annotated result of this manual analysis.
@@ -595,7 +595,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
             </button>
             <button
               type="button"
-              className={styles.ghostButton}
+              className={`${styles.ghostButton} glass-lens`}
               disabled={!monitoringActive}
               onClick={() => audit.stopMonitoring(camera)}
             >
@@ -651,7 +651,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
           <div className={styles.actions}>
             <button
               type="button"
-              className={styles.primaryButton}
+              className={`${styles.primaryButton} glass-lens`}
               disabled={isBusy || !activeConfig.model}
               onClick={() => {
                 setViewMode('capture')
@@ -660,12 +660,12 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
             >
               {isBusy ? text.running : text.startInference}
             </button>
-            <button type="button" className={styles.ghostButton} disabled={isBusy} onClick={() => inputRef.current?.click()}>
+            <button type="button" className={`${styles.ghostButton} glass-lens`} disabled={isBusy} onClick={() => inputRef.current?.click()}>
               {text.replace}
             </button>
             <button
               type="button"
-              className={styles.ghostButton}
+              className={`${styles.ghostButton} glass-lens`}
               disabled={isBusy}
               onClick={() => {
                 audit.clearAudit(camera)

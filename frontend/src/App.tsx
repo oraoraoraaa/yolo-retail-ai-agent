@@ -79,8 +79,8 @@ function App() {
 
   if (auth.status === 'loading') {
     return (
-      <div className="app-loading" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
-        <p style={{ color: 'var(--color-ink-muted)' }}>{text.auth.checking}</p>
+      <div className="app-loading">
+        <p>{text.auth.checking}</p>
       </div>
     )
   }

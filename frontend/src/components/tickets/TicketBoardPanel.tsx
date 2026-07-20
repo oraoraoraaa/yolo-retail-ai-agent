@@ -561,7 +561,7 @@ export function TicketBoardPanel({
         <div className={styles.headerActions}>
           {isAdmin ? (
             <button
-              className={styles.ghostButton}
+              className={`${styles.ghostButton} glass-lens`}
               type="button"
               onClick={() => setShowSettings((value) => !value)}
             >
@@ -570,7 +570,7 @@ export function TicketBoardPanel({
           ) : null}
           {canWrite ? (
             <button
-              className={styles.dangerButton}
+              className={`${styles.dangerButton} glass-lens`}
               type="button"
               disabled={isLoading || total === 0}
               onClick={() => void onClearAllTickets()}
@@ -579,7 +579,7 @@ export function TicketBoardPanel({
             </button>
           ) : null}
           <button
-            className={styles.button}
+            className={`${styles.button} glass-lens`}
             type="button"
             disabled={isLoading}
             onClick={() => void loadTickets()}
@@ -658,7 +658,7 @@ export function TicketBoardPanel({
             ))}
           </select>
         </label>
-        <button className={styles.primaryButton} type="submit" disabled={isLoading}>
+        <button className={`${styles.primaryButton} glass-lens`} type="submit" disabled={isLoading}>
           {text.query}
         </button>
       </form>
@@ -717,6 +717,7 @@ export function TicketBoardPanel({
                     </label>
                   </div>
 
+                  <div className={styles.endpointStack}>
                   {config.endpoints.map((endpoint) => (
                     <div key={endpoint.id} className={styles.endpointCard}>
                       <label className={styles.field}>
@@ -754,7 +755,7 @@ export function TicketBoardPanel({
                           <span>{text.enabled}</span>
                         </label>
                         <button
-                          className={styles.ghostButton}
+                          className={`${styles.ghostButton} glass-lens`}
                           type="button"
                           disabled={settingsBusy}
                           onClick={() => void onTestWebhook(channel, endpoint.id)}
@@ -762,7 +763,7 @@ export function TicketBoardPanel({
                           {text.testWebhook}
                         </button>
                         <button
-                          className={styles.dangerButton}
+                          className={`${styles.dangerButton} glass-lens`}
                           type="button"
                           disabled={settingsBusy || config.endpoints.length <= 1}
                           onClick={() => removeEndpoint(channel, endpoint.id)}
@@ -772,9 +773,10 @@ export function TicketBoardPanel({
                       </div>
                     </div>
                   ))}
+                  </div>
 
                   <button
-                    className={styles.ghostButton}
+                    className={`${styles.ghostButton} glass-lens`}
                     type="button"
                     onClick={() => addEndpoint(channel)}
                   >
@@ -864,7 +866,7 @@ export function TicketBoardPanel({
                   </select>
                 </label>
                 <button
-                  className={styles.dangerButton}
+                  className={`${styles.dangerButton} glass-lens`}
                   type="button"
                   disabled={settingsBusy || webhookSettings.roles.length <= 1}
                   onClick={() => {
@@ -888,7 +890,7 @@ export function TicketBoardPanel({
               </div>
             ))}
             <button
-              className={styles.ghostButton}
+              className={`${styles.ghostButton} glass-lens`}
               type="button"
               onClick={() => {
                 const id = `role_${Math.random().toString(36).slice(2, 7)}`
@@ -953,7 +955,7 @@ export function TicketBoardPanel({
 
           <div className={styles.actionRow}>
             <button
-              className={styles.primaryButton}
+              className={`${styles.primaryButton} glass-lens`}
               type="button"
               disabled={settingsBusy}
               onClick={() => void onSaveWebhooks()}
@@ -979,7 +981,7 @@ export function TicketBoardPanel({
                     <button
                       key={ticket.id}
                       type="button"
-                      className={styles.card}
+                      className={`${styles.card} glass-lens`}
                       onClick={() => void openTicket(ticket)}
                     >
                       <p className={styles.cardTitle}>{ticket.title}</p>
@@ -1034,7 +1036,7 @@ export function TicketBoardPanel({
                   {selected.id} · {formatDate(selected.updatedAt)}
                 </p>
               </div>
-              <button className={styles.ghostButton} type="button" onClick={() => setSelected(null)}>
+              <button className={`${styles.ghostButton} glass-lens`} type="button" onClick={() => setSelected(null)}>
                 {text.close}
               </button>
             </header>
@@ -1066,7 +1068,7 @@ export function TicketBoardPanel({
               <div className={styles.actionRow}>
                 {selected.status === 'open' || selected.status === 'escalated' ? (
                   <button
-                    className={styles.primaryButton}
+                    className={`${styles.primaryButton} glass-lens`}
                     type="button"
                     disabled={selectedBusy}
                     onClick={() => void onRedispatch(selected.id)}
@@ -1076,7 +1078,7 @@ export function TicketBoardPanel({
                 ) : null}
                 {selected.status === 'dispatched' || selected.status === 'open' ? (
                   <button
-                    className={styles.button}
+                    className={`${styles.button} glass-lens`}
                     type="button"
                     disabled={selectedBusy}
                     onClick={() => void changeStatus(selected.id, 'in_progress', 'Staff started work')}
@@ -1086,7 +1088,7 @@ export function TicketBoardPanel({
                 ) : null}
                 {selected.status === 'in_progress' || selected.status === 'dispatched' ? (
                   <button
-                    className={styles.button}
+                    className={`${styles.button} glass-lens`}
                     type="button"
                     disabled={selectedBusy}
                     onClick={() => void changeStatus(selected.id, 'done', 'Marked done by staff')}
@@ -1096,7 +1098,7 @@ export function TicketBoardPanel({
                 ) : null}
                 {selected.status !== 'cancelled' && selected.status !== 'verified' ? (
                   <button
-                    className={styles.dangerButton}
+                    className={`${styles.dangerButton} glass-lens`}
                     type="button"
                     disabled={selectedBusy}
                     onClick={() => void changeStatus(selected.id, 'cancelled', 'Cancelled')}
@@ -1145,7 +1147,7 @@ export function TicketBoardPanel({
                     </select>
                   </label>
                   <button
-                    className={styles.primaryButton}
+                    className={`${styles.primaryButton} glass-lens`}
                     type="button"
                     disabled={selectedBusy}
                     onClick={() => void onVerify(selected.id)}

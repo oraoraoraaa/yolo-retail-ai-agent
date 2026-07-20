@@ -27,6 +27,15 @@ interface AppShellProps {
   onLogout?: () => void
 }
 
+const PAGE_ICONS: Record<AppPageId, string> = {
+  audit: '◎',
+  planogram: '▦',
+  tickets: '⚑',
+  chat: '◉',
+  database: '▤',
+  accounts: '☺',
+}
+
 export function AppShell({
   children,
   pages,
@@ -41,27 +50,24 @@ export function AppShell({
   logoutLabel,
   onLogout,
 }: AppShellProps) {
+  const activePage = pages.find((page) => page.id === activePageId) ?? pages[0]
+  const userName = userLabel?.replace(/^.*\s/, '') || 'Staff'
+
   return (
     <div className={styles.shell}>
-      <header className={styles.header}>
-        <div className={styles.brandBlock}>
-          <p className={styles.brand}>YOLO Retail Agent</p>
-          <p className={styles.tagline}>{tagline}</p>
+      <div className={styles.stageGlow} aria-hidden="true" />
+
+      <aside className={styles.sidebar}>
+        <div className={styles.profileRow}>
+          <div className={styles.avatar} aria-hidden="true">
+            {userName.slice(0, 1).toUpperCase()}
+          </div>
+          <div className={styles.profileCopy}>
+            <p className={styles.profileName}>{userName}</p>
+            <p className={styles.profileMeta}>{tagline}</p>
+          </div>
         </div>
-        <label className={styles.languageControl}>
-          <span>{languageLabel}</span>
-          <select
-            className={styles.languageSelect}
-            value={language}
-            onChange={(event) => onLanguageChange(event.target.value as Language)}
-          >
-            {(Object.keys(LANGUAGE_LABELS) as Language[]).map((option) => (
-              <option key={option} value={option}>
-                {LANGUAGE_LABELS[option]}
-              </option>
-            ))}
-          </select>
-        </label>
+
         <nav className={styles.nav} aria-label={navigationLabel}>
           {pages.map((page) => {
             const isActive = page.id === activePageId
@@ -70,28 +76,69 @@ export function AppShell({
               <button
                 key={page.id}
                 type="button"
-                className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
+                className={`${styles.navItem} glass-lens ${isActive ? styles.navItemActive : ''}`}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => onPageChange(page.id)}
+                title={page.description}
               >
-                <span className={styles.navLabel}>{page.label}</span>
-                <span className={styles.navDescription}>{page.description}</span>
+                <span className={styles.navIcon} aria-hidden="true">
+                  {PAGE_ICONS[page.id]}
+                </span>
+                <span className={styles.navText}>
+                  <span className={styles.navLabel}>{page.label}</span>
+                  <span className={styles.navDescription}>{page.description}</span>
+                </span>
               </button>
             )
           })}
         </nav>
-        {userLabel || onLogout ? (
-          <div className={styles.userBlock}>
-            {userLabel ? <p className={styles.userLabel}>{userLabel}</p> : null}
-            {onLogout && logoutLabel ? (
-              <button className={styles.logoutButton} type="button" onClick={onLogout}>
-                {logoutLabel}
-              </button>
-            ) : null}
+
+        <div className={styles.sidebarFooter}>
+          <label className={styles.languageControl}>
+            <span>{languageLabel}</span>
+            <select
+              className={`${styles.languageSelect} glass-lens`}
+              value={language}
+              onChange={(event) => onLanguageChange(event.target.value as Language)}
+            >
+              {(Object.keys(LANGUAGE_LABELS) as Language[]).map((option) => (
+                <option key={option} value={option}>
+                  {LANGUAGE_LABELS[option]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {userLabel || onLogout ? (
+            <div className={styles.userBlock}>
+              {userLabel ? <p className={styles.userLabel}>{userLabel}</p> : null}
+              {onLogout && logoutLabel ? (
+                <button className={`${styles.logoutButton} glass-lens`} type="button" onClick={onLogout}>
+                  {logoutLabel}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </aside>
+
+      <div className={styles.workspace}>
+        <header className={styles.hero}>
+          <div className={styles.heroCopy}>
+            <p className={styles.eyebrow}>YOLO Retail</p>
+            <h1 className={styles.pageTitle}>{activePage?.label}</h1>
+            <p className={styles.pageDescription}>{activePage?.description}</p>
           </div>
-        ) : null}
-      </header>
-      <main className={styles.main}>{children}</main>
+          <div className={styles.heroBadge} aria-hidden="true">
+            <span className={styles.heroBadgeDot} />
+            Live workspace
+          </div>
+        </header>
+
+        <main key={activePageId} className={`${styles.main} liquid-flow`}>
+          {children}
+        </main>
+      </div>
     </div>
   )
 }

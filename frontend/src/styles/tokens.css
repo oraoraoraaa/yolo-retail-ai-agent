@@ -1,37 +1,71 @@
 :root {
-  /* Retail ops palette — cool slate + teal, light workspace */
-  --color-bg-0: #e7eef2;
-  --color-bg-1: #f4f7f5;
-  --color-surface: rgba(255, 255, 255, 0.78);
-  --color-surface-strong: #ffffff;
-  --color-ink: #142028;
-  --color-ink-muted: #4d5d68;
-  --color-ink-soft: #6d7d88;
-  --color-line: rgba(20, 32, 40, 0.12);
-  --color-accent: #0b7a6e;
-  --color-accent-strong: #065f56;
-  --color-accent-soft: rgba(11, 122, 110, 0.12);
-  --color-warn: #9a5b12;
-  --color-danger: #9b2c2c;
-  --color-user-bubble: #0b7a6e;
-  --color-assistant-bubble: #eef3f1;
+  /* Liquid glass workspace — Apple TV stage + light glass controls */
+  --color-bg-0: #07080c;
+  --color-bg-1: #12141c;
+  --color-surface: rgba(255, 255, 255, 0.08);
+  --color-surface-strong: rgba(255, 255, 255, 0.14);
+  --color-surface-solid: rgba(28, 30, 38, 0.92);
+  --color-ink: #f5f5f7;
+  --color-ink-muted: rgba(255, 255, 255, 0.68);
+  --color-ink-soft: rgba(255, 255, 255, 0.46);
+  --color-line: rgba(255, 255, 255, 0.1);
+  --color-line-strong: rgba(255, 255, 255, 0.18);
+  --color-accent: #0a84ff;
+  --color-accent-strong: #409cff;
+  --color-accent-soft: rgba(10, 132, 255, 0.18);
+  --color-link: #64d2ff;
+  --color-warn: #ff9f0a;
+  --color-danger: #ff453a;
+  --color-success: #30d158;
+  --color-user-bubble: #0a84ff;
+  --color-assistant-bubble: rgba(255, 255, 255, 0.1);
+  --color-on-accent: #ffffff;
+  --color-surface-muted: rgba(255, 255, 255, 0.06);
 
-  --font-display: 'Sora', 'Segoe UI', sans-serif;
-  --font-body: 'Figtree', 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 22px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 28px;
+  --radius-pill: 999px;
 
-  --shadow-soft: 0 18px 40px rgba(20, 32, 40, 0.08);
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --shadow-glass: 0 24px 60px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.4);
+  --shadow-strong: 0 28px 70px rgba(0, 0, 0, 0.5);
+  --shadow-lens: 0 12px 40px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+
+  --glass-bg: rgba(12, 16, 24, 0.52);
+  --glass-bg-strong: rgba(16, 20, 30, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  /* Keep frost readable without over-blurring the stage photo. */
+  --glass-blur: blur(16px) saturate(150%);
+  --glass-blur-soft: blur(12px) saturate(140%);
+  --glass-blur-login: blur(14px) saturate(145%);
+  --glass-lens-bg: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.08) 42%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+
+  --motion-fast: 180ms;
+  --motion-med: 320ms;
+  --motion-slow: 560ms;
+  --ease-liquid: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-5: 1.5rem;
   --space-6: 2rem;
+  --space-7: 2.5rem;
 
-  --panel-max: 1440px;
-  --header-height: 4.25rem;
+  --panel-max: 1520px;
+  --header-height: 3.5rem;
+  --sidebar-width: 15.5rem;
 }

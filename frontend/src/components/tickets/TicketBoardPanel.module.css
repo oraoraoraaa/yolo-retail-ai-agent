@@ -2,13 +2,17 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  min-height: calc(100vh - 3rem);
+  min-height: calc(100vh - 6.5rem);
   padding: var(--space-5);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(10px);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+
+  animation: liquidRise var(--motion-slow) var(--ease-liquid) both;
+  overflow: hidden;
 }
 
 .header {
@@ -22,8 +26,9 @@
 .title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
@@ -57,10 +62,10 @@
 .select {
   width: 100%;
   min-height: 2.75rem;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   padding: 0.65rem 0.8rem;
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--color-ink);
 }
 
@@ -68,10 +73,16 @@
 .ghostButton,
 .dangerButton,
 .primaryButton {
+  transition:
+    transform var(--motion-med) var(--ease-liquid),
+    box-shadow var(--motion-med) var(--ease-liquid),
+    border-color var(--motion-med) var(--ease-liquid),
+    background-color var(--motion-med) var(--ease-liquid);
+
   min-height: 2.55rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-line);
-  padding: 0.55rem 0.85rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.55rem 0.95rem;
   font-weight: 600;
   transition:
     background-color 140ms ease,
@@ -81,13 +92,13 @@
 
 .ghostButton,
 .button {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--color-ink);
 }
 
 .ghostButton:hover:not(:disabled),
 .button:hover:not(:disabled) {
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .primaryButton {
@@ -102,7 +113,7 @@
 
 .dangerButton {
   background: rgba(180, 45, 45, 0.08);
-  color: #9b1c1c;
+  color: #ff8a80;
   border-color: rgba(180, 45, 45, 0.2);
 }
 
@@ -118,18 +129,24 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   gap: var(--space-3);
+  align-items: stretch;
   min-height: 22rem;
+  max-height: min(68vh, 46rem);
 }
 
 .column {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 18rem;
+  min-height: 0;
+  height: 100%;
+  max-height: min(68vh, 46rem);
   padding: var(--space-3);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
 }
 
 .columnHeader {
@@ -162,15 +179,20 @@
   flex-direction: column;
   gap: var(--space-2);
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.15rem;
+  scrollbar-gutter: stable;
 }
 
 .card {
   width: 100%;
   text-align: left;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   padding: 0.85rem;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--color-ink);
   display: grid;
   gap: 0.45rem;
@@ -182,7 +204,7 @@
 }
 
 .card:hover {
-  border-color: rgba(11, 122, 110, 0.28);
+  border-color: rgba(0, 113, 227, 0.28);
   box-shadow: 0 8px 20px rgba(15, 40, 35, 0.06);
   transform: translateY(-1px);
 }
@@ -222,28 +244,28 @@
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.01em;
-  background: rgba(15, 40, 35, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--color-ink-muted);
 }
 
 .priorityCritical {
   background: rgba(180, 45, 45, 0.12);
-  color: #9b1c1c;
+  color: #ff8a80;
 }
 
 .priorityHigh {
   background: rgba(196, 110, 18, 0.14);
-  color: #9a3412;
+  color: #ffb74d;
 }
 
 .priorityMedium {
-  background: rgba(11, 122, 110, 0.12);
+  background: var(--color-accent-soft);
   color: var(--color-accent-strong);
 }
 
 .priorityLow {
   background: rgba(70, 90, 120, 0.12);
-  color: #334155;
+  color: #c5d0e0;
 }
 
 .emptyState {
@@ -271,7 +293,7 @@
 }
 
 .errorLine {
-  color: #9b1c1c;
+  color: #ff8a80;
 }
 
 .statusLine {
@@ -285,8 +307,8 @@
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: rgba(10, 20, 18, 0.38);
-  backdrop-filter: blur(4px);
+  background: rgba(4, 6, 10, 0.72);
+  backdrop-filter: blur(10px) saturate(140%);
 }
 
 .detailCard {
@@ -296,10 +318,11 @@
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
+  background: rgba(16, 18, 26, 0.94);
+  box-shadow: var(--shadow-strong);
+  color: var(--color-ink);
 }
 
 .detailHeader {
@@ -347,9 +370,9 @@
 
 .historyItem {
   padding: 0.7rem 0.8rem;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .historyEvent {
@@ -379,44 +402,69 @@
   max-height: 14rem;
   overflow: auto;
   padding: 0.8rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-line);
-  background: rgba(15, 40, 35, 0.04);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.86);
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .settingsCard {
   display: grid;
   gap: var(--space-3);
+  max-height: min(72vh, 48rem);
+  overflow: auto;
   padding: var(--space-4);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(12, 16, 24, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: var(--glass-blur-soft);
 }
 
 .settingsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: var(--space-3);
+  align-items: stretch;
+  min-height: 0;
 }
 
 .channelCard {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: var(--space-2);
+  min-height: 16rem;
+  max-height: min(42vh, 28rem);
   padding: var(--space-3);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.endpointStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.15rem;
+  scrollbar-gutter: stable;
 }
 
 .endpointCard {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px dashed rgba(11, 122, 110, 0.28);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px dashed rgba(10, 132, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .channelHeader {
@@ -451,9 +499,9 @@
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px dashed rgba(11, 122, 110, 0.35);
-  border-radius: var(--radius-sm);
-  background: rgba(11, 122, 110, 0.05);
+  border: 1px dashed rgba(0, 113, 227, 0.35);
+  border-radius: 12px;
+  background: rgba(0, 113, 227, 0.05);
 }
 
 @media (max-width: 960px) {
@@ -464,4 +512,11 @@
   .board {
     grid-template-columns: 1fr;
   }
+}
+
+
+
+.channelFooter {
+  display: grid;
+  gap: var(--space-2);
 }

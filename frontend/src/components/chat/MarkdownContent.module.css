@@ -67,7 +67,7 @@
 .markdown blockquote {
   margin: 0.65em 0;
   padding: 0.15em 0 0.15em 0.85em;
-  border-left: 3px solid rgba(11, 122, 110, 0.45);
+  border-left: 3px solid rgba(0, 113, 227, 0.45);
   color: var(--color-ink-muted);
 }
 
@@ -76,16 +76,16 @@
   font-size: 0.86em;
   padding: 0.12em 0.35em;
   border-radius: 4px;
-  background: rgba(20, 32, 40, 0.08);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .markdown pre {
   margin: 0.65em 0;
   padding: 0.75rem 0.85rem;
   overflow-x: auto;
-  border-radius: var(--radius-sm);
+  border-radius: 12px;
   background: #142028;
-  color: #eef3f1;
+  color: var(--color-surface-solid);
 }
 
 .markdown pre code {
@@ -110,13 +110,13 @@
 
 .markdown th,
 .markdown td {
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0.4rem 0.55rem;
   text-align: left;
 }
 
 .markdown th {
-  background: rgba(11, 122, 110, 0.08);
+  background: rgba(0, 113, 227, 0.08);
   font-weight: 600;
 }
 

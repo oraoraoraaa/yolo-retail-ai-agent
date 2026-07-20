@@ -2,13 +2,17 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  min-height: calc(100vh - 3rem);
+  min-height: calc(100vh - 6.5rem);
   padding: var(--space-5);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(10px);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+
+  animation: liquidRise var(--motion-slow) var(--ease-liquid) both;
+  overflow: hidden;
 }
 
 .header {
@@ -22,8 +26,9 @@
 .title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
@@ -55,8 +60,8 @@
 .notice {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   background: var(--color-surface-muted, rgba(0, 0, 0, 0.03));
   color: var(--color-ink-muted);
   font-size: 0.88rem;
@@ -65,8 +70,8 @@
 .button {
   min-height: 2.6rem;
   padding: 0 var(--space-4);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   background: var(--color-surface);
   color: var(--color-ink);
   font-weight: 600;
@@ -92,7 +97,7 @@
 
 .tableWrap {
   overflow-x: auto;
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
 }
 
@@ -122,8 +127,8 @@
   display: inline-block;
   padding: 0.15rem 0.55rem;
   border-radius: var(--radius-pill, 999px);
-  background: var(--color-surface-muted, rgba(0, 0, 0, 0.05));
-  border: 1px solid var(--color-line);
+  background: var(--color-surface-muted, rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -192,7 +197,8 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(4, 6, 10, 0.78);
+  backdrop-filter: blur(12px) saturate(150%);
   z-index: 40;
   padding: var(--space-4);
 }
@@ -203,10 +209,11 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-5);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  background: rgba(14, 16, 24, 0.96);
   box-shadow: var(--shadow-strong, 0 12px 40px rgba(0, 0, 0, 0.3));
+  color: var(--color-ink);
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -216,6 +223,7 @@
   font-family: var(--font-display);
   font-size: 1.05rem;
   font-weight: 600;
+  color: #fff;
 }
 
 .field {
@@ -230,11 +238,20 @@
 .select {
   min-height: 2.6rem;
   padding: 0 var(--space-3);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
   color: var(--color-ink);
   font-size: 0.95rem;
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.select option {
+  color: #111;
+  background: #fff;
 }
 
 .checkboxField {

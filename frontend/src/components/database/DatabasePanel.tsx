@@ -187,7 +187,7 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
           {canWrite ? (
             <>
               <button
-                className={styles.refreshButton}
+                className={`${styles.refreshButton} glass-lens`}
                 type="button"
                 disabled={isLoading}
                 onClick={() => void onBackup()}
@@ -195,7 +195,7 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
                 {text.backup}
               </button>
               <button
-                className={styles.refreshButton}
+                className={`${styles.refreshButton} glass-lens`}
                 type="button"
                 disabled={isLoading}
                 onClick={() => restoreInputRef.current?.click()}
@@ -216,7 +216,7 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
                 }}
               />
               <button
-                className={styles.closeButton}
+                className={`${styles.closeButton} glass-lens`}
                 type="button"
                 disabled={isLoading || records.length === 0}
                 onClick={() => void onClearAll()}
@@ -225,7 +225,7 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
               </button>
             </>
           ) : null}
-          <button className={styles.refreshButton} type="button" disabled={isLoading} onClick={() => void loadRecords()}>
+          <button className={`${styles.refreshButton} glass-lens`} type="button" disabled={isLoading} onClick={() => void loadRecords()}>
             {isLoading ? text.loading : text.refresh}
           </button>
         </div>
@@ -250,7 +250,7 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
             <button
               key={value}
               type="button"
-              className={`${styles.filterButton} ${filter === value ? styles.filterButtonActive : ''}`}
+              className={`${styles.filterButton} ${filter === value ? styles.filterButtonActive : ''} glass-lens`}
               aria-pressed={filter === value}
               onClick={() => onFilterChange(value)}
             >
@@ -258,7 +258,7 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
             </button>
           ))}
         </div>
-        <button className={styles.queryButton} type="submit" disabled={isLoading}>
+        <button className={`${styles.queryButton} glass-lens`} type="submit" disabled={isLoading}>
           {text.query}
         </button>
       </form>
@@ -270,8 +270,8 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
           <table className={styles.table}>
             <thead>
               <tr>
-                {text.columns.map((column) => (
-                  <th key={column} scope="col">
+                {text.columns.map((column, index) => (
+                  <th key={`${column}-${index}`} scope="col">
                     {column}
                   </th>
                 ))}
@@ -285,13 +285,17 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
                   </td>
                   <td>
                     <div className={styles.titleCell}>
-                      <span>{record.title}</span>
+                      <span className={styles.titleText}>{record.title}</span>
                       {record.imageUrl ? <span className={styles.imageChip}>{text.hasImage}</span> : null}
                       {record.detectionJson ? <span className={styles.jsonChip}>{text.hasDetections}</span> : null}
                     </div>
                   </td>
-                  <td>{record.summary}</td>
-                  <td>{formatDate(record.updatedAt)}</td>
+                  <td>
+                    <span className={styles.summaryText}>{record.summary}</span>
+                  </td>
+                  <td>
+                    <span className={styles.timeText}>{formatDate(record.updatedAt)}</span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -315,7 +319,7 @@ export function DatabasePanel({ text, canWrite = true, readOnlyNotice }: Databas
                   {selected.id} · {formatDate(selected.updatedAt)}
                 </p>
               </div>
-              <button className={styles.closeButton} type="button" onClick={() => setSelected(null)}>
+              <button className={`${styles.closeButton} glass-lens`} type="button" onClick={() => setSelected(null)}>
                 {text.close}
               </button>
             </header>

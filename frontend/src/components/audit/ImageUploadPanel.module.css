@@ -2,13 +2,17 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  min-height: calc(100vh - 3rem);
+  min-height: calc(100vh - 6.5rem);
   padding: var(--space-5);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(10px);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+
+  animation: liquidRise var(--motion-slow) var(--ease-liquid) both;
+  overflow: hidden;
 }
 
 .header {
@@ -20,9 +24,9 @@
 .title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
@@ -36,10 +40,11 @@
   grid-template-columns: minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) minmax(7rem, 0.8fr) auto;
   gap: var(--space-3);
   align-items: end;
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .headerRow {
@@ -58,7 +63,7 @@
 
 .viewToggle {
   display: inline-flex;
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
   padding: 0.15rem;
   background: var(--color-surface);
@@ -81,11 +86,17 @@
 }
 
 .backButton {
+  transition:
+    transform var(--motion-med) var(--ease-liquid),
+    box-shadow var(--motion-med) var(--ease-liquid),
+    border-color var(--motion-med) var(--ease-liquid),
+    background-color var(--motion-med) var(--ease-liquid);
+
   align-self: flex-start;
   margin-bottom: var(--space-2);
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   background: transparent;
   color: var(--color-ink);
   font-size: 0.82rem;
@@ -94,7 +105,7 @@
 }
 
 .backButton:hover {
-  background: rgba(20, 32, 40, 0.04);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .blockGrid {
@@ -106,10 +117,16 @@
 .cameraBlock {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-line);
+  transition:
+    transform var(--motion-med) var(--ease-liquid),
+    box-shadow var(--motion-med) var(--ease-liquid),
+    border-color var(--motion-med) var(--ease-liquid),
+    background-color var(--motion-med) var(--ease-liquid);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
 .blockCover {
@@ -202,10 +219,10 @@
 .blockSelect {
   width: 100%;
   min-height: 2.25rem;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   padding: 0.35rem 0.55rem;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.1);
   color: var(--color-ink);
 }
 
@@ -223,10 +240,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .pickerLabel {
@@ -263,7 +281,7 @@
 }
 
 .cameraChip:hover {
-  border-color: rgba(11, 122, 110, 0.4);
+  border-color: rgba(0, 113, 227, 0.4);
 }
 
 .cameraChipActive {
@@ -285,7 +303,7 @@
   border-radius: var(--radius-md);
   padding: var(--space-5);
   text-align: center;
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .selectPromptTitle {
@@ -329,10 +347,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .activeHeader {
@@ -361,8 +380,8 @@
   align-items: center;
   gap: var(--space-2);
   min-height: 2rem;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   padding: 0 0.7rem;
   background: var(--color-surface);
   color: var(--color-ink-muted);
@@ -371,7 +390,7 @@
 }
 
 .streamBadgeLive {
-  border-color: rgba(11, 122, 110, 0.28);
+  border-color: rgba(0, 113, 227, 0.28);
   background: var(--color-accent-soft);
   color: var(--color-accent-strong);
 }
@@ -408,7 +427,7 @@
 
 .activePlaceholderCopy {
   margin: 0;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.12);
   font-size: 0.9rem;
 }
 
@@ -458,10 +477,10 @@
 .select {
   width: 100%;
   min-height: 2.5rem;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   padding: 0.45rem 0.65rem;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.1);
   color: var(--color-ink);
 }
 
@@ -478,10 +497,10 @@
   place-items: center;
   min-height: 220px;
   padding: var(--space-5);
-  border: 1.5px dashed rgba(11, 122, 110, 0.45);
+  border: 1.5px dashed rgba(0, 113, 227, 0.45);
   border-radius: var(--radius-md);
   background:
-    linear-gradient(180deg, rgba(11, 122, 110, 0.06), transparent 70%),
+    linear-gradient(180deg, rgba(0, 113, 227, 0.06), transparent 70%),
     var(--color-surface-strong);
   text-align: center;
   transition:
@@ -550,7 +569,7 @@
 
 .primaryButton,
 .ghostButton {
-  border-radius: var(--radius-sm);
+  border-radius: 12px;
   padding: 0.55rem 0.95rem;
   border: 1px solid transparent;
   transition:
@@ -560,6 +579,12 @@
 }
 
 .primaryButton {
+  transition:
+    transform var(--motion-med) var(--ease-liquid),
+    box-shadow var(--motion-med) var(--ease-liquid),
+    border-color var(--motion-med) var(--ease-liquid),
+    background-color var(--motion-med) var(--ease-liquid);
+
   background: var(--color-accent);
   color: #fff;
 }
@@ -580,7 +605,7 @@
 }
 
 .ghostButton:hover:not(:disabled) {
-  background: rgba(20, 32, 40, 0.04);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .results {
@@ -590,9 +615,9 @@
 }
 
 .box {
-  border: 1px solid var(--color-line);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
-  background: var(--color-surface-strong);
+  background: rgba(255, 255, 255, 0.1);
   padding: var(--space-4);
 }
 
@@ -650,7 +675,7 @@
 .progressPanel {
   display: grid;
   gap: var(--space-2);
-  border: 1px solid rgba(11, 122, 110, 0.22);
+  border: 1px solid rgba(0, 113, 227, 0.22);
   border-radius: var(--radius-md);
   padding: var(--space-3);
   background: var(--color-accent-soft);
@@ -671,7 +696,7 @@
   height: 0.45rem;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(11, 122, 110, 0.14);
+  background: rgba(0, 113, 227, 0.14);
 }
 
 .progressBar {
@@ -704,7 +729,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: 0.35rem 0.5rem;
-  border-radius: var(--radius-sm);
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.45);
   font-size: 0.84rem;
 }
@@ -723,8 +748,8 @@
 }
 
 .step_running {
-  border: 1px solid rgba(11, 122, 110, 0.28);
-  background: rgba(11, 122, 110, 0.1);
+  border: 1px solid rgba(0, 113, 227, 0.28);
+  background: rgba(0, 113, 227, 0.1);
 }
 
 .step_done .stepStatus {
@@ -776,4 +801,20 @@
   100% {
     transform: translateX(230%);
   }
+}
+
+
+.cameraBlock:hover,
+.cameraBlock:focus-within {
+  transform: translateY(-4px) scale(1.01);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
+}
+
+.cameraBlock:hover .blockBodyExtra {
+  max-height: 8rem;
+  opacity: 1;
 }

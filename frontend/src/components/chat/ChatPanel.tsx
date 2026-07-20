@@ -8,6 +8,7 @@ import { MarkdownContent } from './MarkdownContent'
 import styles from './ChatPanel.module.css'
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const AGENT_AVATAR_SRC = '/icons/agent-avatar.jpeg'
 
 interface ChatPanelProps {
   text: (typeof UI_TEXT)[Language]['chat']
@@ -128,19 +129,39 @@ export function ChatPanel({ text, messages, status, errorMessage, onSendMessage 
   return (
     <section className={styles.panel} aria-labelledby="chat-panel-title">
       <header className={styles.header}>
-        <h2 id="chat-panel-title" className={styles.title}>
-          {text.title}
-        </h2>
-        <p className={styles.subtitle}>{text.subtitle}</p>
+        <div className={styles.headerIdentity}>
+          <img
+            className={styles.headerAvatar}
+            src={AGENT_AVATAR_SRC}
+            alt=""
+            width={40}
+            height={40}
+            decoding="async"
+          />
+          <div>
+            <h2 id="chat-panel-title" className={styles.title}>
+              {text.title}
+            </h2>
+            <p className={styles.subtitle}>{text.subtitle}</p>
+          </div>
+        </div>
       </header>
 
       <div ref={listRef} className={styles.messages} role="log" aria-live="polite">
         {messages.length === 0 ? (
           <div className={styles.emptyState}>
+            <img
+              className={styles.emptyAvatar}
+              src={AGENT_AVATAR_SRC}
+              alt=""
+              width={72}
+              height={72}
+              decoding="async"
+            />
             <p className={styles.emptyTitle}>{text.emptyTitle}</p>
             <div className={styles.promptGrid} aria-label={text.recommendedQuestions}>
               {text.prompts.map((prompt) => (
-                <button key={prompt} type="button" className={styles.promptChip} onClick={() => applyPrompt(prompt)}>
+                <button key={prompt} type="button" className={`${styles.promptChip} glass-lens`} onClick={() => applyPrompt(prompt)}>
                   {prompt}
                 </button>
               ))}
@@ -156,6 +177,16 @@ export function ChatPanel({ text, messages, status, errorMessage, onSendMessage 
                 key={message.id}
                 className={`${styles.bubbleRow} ${isUser ? styles.bubbleRowUser : styles.bubbleRowAssistant}`}
               >
+                {!isUser ? (
+                  <img
+                    className={styles.avatar}
+                    src={AGENT_AVATAR_SRC}
+                    alt=""
+                    width={36}
+                    height={36}
+                    decoding="async"
+                  />
+                ) : null}
                 <div
                   className={`${styles.bubble} ${isUser ? styles.bubbleUser : styles.bubbleAssistant} ${
                     isEmptyAssistant ? styles.bubbleEmpty : ''
@@ -182,6 +213,14 @@ export function ChatPanel({ text, messages, status, errorMessage, onSendMessage 
 
         {isSending ? (
           <div className={`${styles.bubbleRow} ${styles.bubbleRowAssistant}`}>
+            <img
+              className={styles.avatar}
+              src={AGENT_AVATAR_SRC}
+              alt=""
+              width={36}
+              height={36}
+              decoding="async"
+            />
             <div className={`${styles.bubble} ${styles.bubbleAssistant} ${styles.bubbleEmpty}`}>{text.thinking}</div>
           </div>
         ) : null}

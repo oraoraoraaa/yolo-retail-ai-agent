@@ -176,7 +176,7 @@ class Settings:
         )
     )
     auth_token_ttl_hours: int = field(
-        default_factory=lambda: int(os.getenv("AUTH_TOKEN_TTL_HOURS", "12"))
+        default_factory=lambda: int(os.getenv("AUTH_TOKEN_TTL_HOURS", "720"))
     )
     # Bootstrap account seeded when the users table is empty. It is created as
     # the top-tier ``owner`` role (full control incl. account management), not a

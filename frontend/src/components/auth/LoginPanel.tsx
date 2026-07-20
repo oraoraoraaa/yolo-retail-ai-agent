@@ -46,55 +46,75 @@ export function LoginPanel({
 
   return (
     <div className={styles.page}>
-      <form className={styles.card} onSubmit={(event) => void handleSubmit(event)}>
-        <div className={styles.brandBlock}>
-          <p className={styles.brand}>YOLO Retail Agent</p>
-          <p className={styles.tagline}>{text.tagline}</p>
-        </div>
-
-        <label className={styles.field}>
-          <span>{text.username}</span>
-          <input
-            className={styles.input}
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            required
-          />
-        </label>
-
-        <label className={styles.field}>
-          <span>{text.password}</span>
-          <input
-            className={styles.input}
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-
-        {displayError ? <p className={styles.error}>{displayError}</p> : null}
-
-        <button className={styles.submit} type="submit" disabled={submitting}>
-          {submitting ? text.signingIn : text.signIn}
-        </button>
-
-        <p className={styles.hint}>{text.hint}</p>
-
+      <div className={styles.topBar}>
         <label className={styles.languageControl}>
-          <span>{languageLabel}</span>
+          <span className={styles.srOnly}>{languageLabel}</span>
           <select
             className={styles.languageSelect}
             value={language}
+            aria-label={languageLabel}
             onChange={(event) => onLanguageChange(event.target.value as Language)}
           >
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
         </label>
-      </form>
+      </div>
+
+      <div className={styles.stage}>
+        <section className={styles.intro} aria-labelledby="login-title">
+          <div className={styles.mark} aria-hidden="true">
+            <span className={styles.markGlyph}>Y</span>
+          </div>
+          <h1 id="login-title" className={styles.title}>
+            {text.signInTitle}
+          </h1>
+          <p className={styles.subtitle}>{text.signInSubtitle}</p>
+        </section>
+
+        <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+          <div className={styles.fields}>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>{text.username}</span>
+              <input
+                className={styles.input}
+                autoComplete="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder={text.usernamePlaceholder}
+                required
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>{text.password}</span>
+              <input
+                className={styles.input}
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={text.passwordPlaceholder}
+                required
+              />
+            </label>
+          </div>
+
+          {displayError ? <p className={styles.error}>{displayError}</p> : null}
+
+          <p className={styles.privacyNote}>
+            {text.privacyNote}{' '}
+            <span className={styles.linkish}>{text.learnMore}</span>
+          </p>
+
+          <div className={styles.actions}>
+            <p className={styles.hint}>{text.hintShort}</p>
+            <button className={`${styles.next} glass-lens`} type="submit" disabled={submitting}>
+              {submitting ? text.signingIn : text.next}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
