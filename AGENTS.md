@@ -311,6 +311,11 @@ Follow Conventional Commits (see human rules doc). Examples relevant here:
 - Do not treat `model/` as the active training/runtime path (use `train/` + `model-local/`).
 - Do not commit `dataset/*` downloads, `train/artifacts/`, `backend/data/`, or `.venv/`.
 - Do not ignore `uv.lock` in git (locks are tracked per package).
+- **Do not delete `backup-test.zip`.** It is a committed sample backup kept on
+  purpose so anyone can exercise the "restore system from backup" flow
+  (`POST /api/v1/database/backup/restore`) without first generating one. It is
+  the single intentional exception to the "don't commit backups/data" rule — a
+  fixture, not a stray artifact.
 
 ---
 

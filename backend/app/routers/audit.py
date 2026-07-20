@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.config import get_settings
 from app.schemas.audit import AuditAnalysisResult, DetectionAgentRequest
@@ -26,6 +26,11 @@ from app.services.media import decode_image_payload
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
 
 _ALLOWED_PREFIX = "image/"
+
+
+def _normalize_language(language: str | None) -> str:
+    """Coerce an arbitrary language hint to a supported code ('zh' or 'en')."""
+    return "zh" if str(language or "").strip().lower().startswith("zh") else "en"
 
 
 def _gap_count(vision: dict[str, Any] | None) -> int:
@@ -83,9 +88,11 @@ async def _run_closed_loop_safe(
 async def analyze_shelf_image(
     _user: Annotated[AuthUser, Depends(require_write)],
     image: UploadFile = File(...),
+    language: str = Query(default="en"),
 ) -> AuditAnalysisResult:
     """Run gap detection on an uploaded shelf image via model-local."""
     settings = get_settings()
+    language = _normalize_language(language)
     if image.content_type and not image.content_type.startswith(_ALLOWED_PREFIX):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -115,9 +122,12 @@ async def analyze_shelf_image(
         suggested_action, explanation = await agent.summarize_detection_json(
             detection.vision_model_response,
             planogram_response=None,
+            language=language,
         )
     else:
-        suggested_action, explanation = await agent.summarize_audit(detection)
+        suggested_action, explanation = await agent.summarize_audit(
+            detection, language=language
+        )
 
     record_id: str | None = None
     ticket_ids: list[str] = []
@@ -140,7 +150,7 @@ async def analyze_shelf_image(
             ticket_ids, closed_loop_narrative = await _run_closed_loop_safe(
                 vision=detection.vision_model_response,
                 planogram=None,
-                language="en",
+                language=language,
                 source_label=image.filename,
                 audit_record_id=record_id,
             )

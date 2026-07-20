@@ -1,17 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 
-import { AccountsPanel } from '@/components/accounts/AccountsPanel'
-import { LoginPanel } from '@/components/auth/LoginPanel'
 import { ImageUploadPanel } from '@/components/audit/ImageUploadPanel'
-import { ChatPanel } from '@/components/chat/ChatPanel'
-import { DatabasePanel } from '@/components/database/DatabasePanel'
+import { LoginPanel } from '@/components/auth/LoginPanel'
 import { AppShell, type AppPage, type AppPageId } from '@/components/layout/AppShell'
-import { PlanogramPanel } from '@/components/planogram/PlanogramPanel'
-import { TicketBoardPanel } from '@/components/tickets/TicketBoardPanel'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useAuditAnalysis } from '@/hooks/useAuditAnalysis'
 import { useAuth } from '@/hooks/useAuth'
 import { UI_TEXT, type Language } from '@/lib/i18n'
+
+// Route panels are code-split so the initial bundle only ships the landing
+// (audit) page. Each becomes its own chunk fetched the first time its tab is
+// opened, keeping first paint light on the shelf-audit workspace.
+const PlanogramPanel = lazy(() =>
+  import('@/components/planogram/PlanogramPanel').then((m) => ({ default: m.PlanogramPanel })),
+)
+const TicketBoardPanel = lazy(() =>
+  import('@/components/tickets/TicketBoardPanel').then((m) => ({ default: m.TicketBoardPanel })),
+)
+const ChatPanel = lazy(() =>
+  import('@/components/chat/ChatPanel').then((m) => ({ default: m.ChatPanel })),
+)
+const DatabasePanel = lazy(() =>
+  import('@/components/database/DatabasePanel').then((m) => ({ default: m.DatabasePanel })),
+)
+const AccountsPanel = lazy(() =>
+  import('@/components/accounts/AccountsPanel').then((m) => ({ default: m.AccountsPanel })),
+)
 
 function getInitialLanguage(): Language {
   const stored = window.localStorage.getItem('yolo-retail-language')
@@ -102,42 +116,48 @@ function App() {
         <ImageUploadPanel text={text.audit} language={language} audit={audit} canWrite={canWrite} />
       ) : null}
 
-      {activePageId === 'planogram' ? (
-        <PlanogramPanel text={text.planogram} canWrite={canWrite} readOnlyNotice={text.readOnlyNotice} />
-      ) : null}
+      <Suspense
+        fallback={
+          <div style={{ padding: '2rem', color: 'var(--color-ink-muted)' }}>{text.auth.checking}</div>
+        }
+      >
+        {activePageId === 'planogram' ? (
+          <PlanogramPanel text={text.planogram} canWrite={canWrite} readOnlyNotice={text.readOnlyNotice} />
+        ) : null}
 
-      {activePageId === 'tickets' ? (
-        <TicketBoardPanel
-          text={text.tickets}
-          language={language}
-          isAdmin={canWrite}
-          canWrite={canWrite}
-          readOnlyNotice={text.readOnlyNotice}
-        />
-      ) : null}
+        {activePageId === 'tickets' ? (
+          <TicketBoardPanel
+            text={text.tickets}
+            language={language}
+            isAdmin={canWrite}
+            canWrite={canWrite}
+            readOnlyNotice={text.readOnlyNotice}
+          />
+        ) : null}
 
-      {activePageId === 'chat' ? (
-        <ChatPanel
-          text={text.chat}
-          messages={chat.state.messages}
-          status={chat.state.status}
-          errorMessage={chat.state.errorMessage}
-          onSendMessage={(content, attachments) => chat.sendMessage(content, attachments, language)}
-        />
-      ) : null}
+        {activePageId === 'chat' ? (
+          <ChatPanel
+            text={text.chat}
+            messages={chat.state.messages}
+            status={chat.state.status}
+            errorMessage={chat.state.errorMessage}
+            onSendMessage={(content, attachments) => chat.sendMessage(content, attachments, language)}
+          />
+        ) : null}
 
-      {activePageId === 'database' ? (
-        <DatabasePanel text={text.database} canWrite={canWrite} readOnlyNotice={text.readOnlyNotice} />
-      ) : null}
+        {activePageId === 'database' ? (
+          <DatabasePanel text={text.database} canWrite={canWrite} readOnlyNotice={text.readOnlyNotice} />
+        ) : null}
 
-      {activePageId === 'accounts' && canViewAccounts ? (
-        <AccountsPanel
-          text={text.accounts}
-          language={language}
-          canManage={canManageAccounts}
-          currentUserId={auth.userId}
-        />
-      ) : null}
+        {activePageId === 'accounts' && canViewAccounts ? (
+          <AccountsPanel
+            text={text.accounts}
+            language={language}
+            canManage={canManageAccounts}
+            currentUserId={auth.userId}
+          />
+        ) : null}
+      </Suspense>
     </AppShell>
   )
 }

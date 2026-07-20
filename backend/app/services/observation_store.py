@@ -10,6 +10,7 @@ audits → confirmed → ticketed.
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select
@@ -32,6 +33,30 @@ def _as_aware(value: datetime) -> datetime:
 class ObservationStore:
     """SQL-backed rolling record of finding observations for debounce."""
 
+    def __init__(self) -> None:
+        # Gate stale-row pruning so it runs at most once per retention window
+        # instead of on every single write. Under many cameras auditing every
+        # few seconds, a global ``DELETE`` on every observation adds needless
+        # write contention on SQLite; the table only needs trimming on the
+        # order of the retention period, not per row.
+        self._prune_lock = threading.Lock()
+        self._last_prune_at: datetime | None = None
+
+    def _should_prune(self, now: datetime, retention_seconds: int) -> bool:
+        """Return True at most once per retention window (thread-safe)."""
+        if retention_seconds <= 0:
+            return False
+        # Prune roughly once per retention window. Bound the interval so a very
+        # short retention still coalesces bursts, and a long one still trims
+        # within a reasonable time.
+        interval = max(30.0, min(float(retention_seconds), 300.0))
+        with self._prune_lock:
+            last = self._last_prune_at
+            if last is not None and (now - last).total_seconds() < interval:
+                return False
+            self._last_prune_at = now
+            return True
+
     def record(
         self,
         fingerprint: str,
@@ -40,7 +65,13 @@ class ObservationStore:
         source_key: str = "",
         retention_seconds: int = 1800,
     ) -> None:
-        """Persist one observation of a finding and prune stale rows."""
+        """Persist one observation of a finding, pruning stale rows periodically.
+
+        The stale-row prune is time-gated (see ``_should_prune``) so it fires at
+        most once per retention window rather than on every write — this keeps
+        many-camera, high-frequency auditing from hammering SQLite with a global
+        ``DELETE`` on each observation.
+        """
         if not fingerprint:
             return
         get_engine()
@@ -54,7 +85,7 @@ class ObservationStore:
                     observed_at=now,
                 )
             )
-            if retention_seconds > 0:
+            if self._should_prune(now, retention_seconds):
                 cutoff = now - timedelta(seconds=retention_seconds)
                 session.execute(
                     delete(FindingObservationRow).where(

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -279,7 +280,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
     return rectFromPoints(drawState.startX, drawState.startY, drawState.currentX, drawState.currentY)
   }, [drawState])
 
-  async function refresh(): Promise<void> {
+  const refresh = useCallback(async (): Promise<void> => {
     setBusy(true)
     setErrorMessage(null)
     try {
@@ -291,11 +292,11 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
     } finally {
       setBusy(false)
     }
-  }
+  }, [text])
 
   useEffect(() => {
     void refresh()
-  }, [])
+  }, [refresh])
 
   function startCreate(): void {
     setDraft(emptyDraft())
@@ -624,18 +625,23 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
     })
   }
 
-  function deleteSelectedSlot(): void {
-    if (!selectedSlotId) {
+  // These four are memoized (and read the selected slot / clipboard / draft
+  // through refs, never captured state) so the global keydown handler below can
+  // list them as effect dependencies without re-subscribing on every keystroke
+  // or capturing a stale closure.
+  const deleteSelectedSlot = useCallback((): void => {
+    const slot = selectedSlotRef.current
+    if (!slot) {
       return
     }
     setDraft((previous) => ({
       ...previous,
-      slots: previous.slots.filter((slot) => slot.id !== selectedSlotId),
+      slots: previous.slots.filter((item) => item.id !== slot.id),
     }))
     setSelectedSlotId(null)
-  }
+  }, [])
 
-  function copySelectedSlot(): boolean {
+  const copySelectedSlot = useCallback((): boolean => {
     const slot = selectedSlotRef.current
     if (!slot) {
       setErrorMessage(text.errors.copyRequiresSelection)
@@ -647,44 +653,50 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
     setErrorMessage(null)
     setStatusMessage(text.copied)
     return true
-  }
+  }, [text])
 
-  function pasteClipboardSlot(prefer: 'right' | 'below' | 'nudge' = 'right'): boolean {
-    const source = clipboardRef.current
-    if (!source) {
-      setErrorMessage(text.errors.pasteEmpty)
-      return false
-    }
-    const existing = draftSlotsRef.current
-    const position = nextPastePosition(source, existing, prefer)
-    const id = createSlotId(existing)
-    const next: PlanogramSlot = {
-      id,
-      ...source,
-      x: position.x,
-      y: position.y,
-    }
-    setDraft((previous) => ({
-      ...previous,
-      slots: [...previous.slots, next].sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id)),
-    }))
-    setSelectedSlotId(id)
-    setErrorMessage(null)
-    setStatusMessage(text.pasted)
-    return true
-  }
+  const pasteClipboardSlot = useCallback(
+    (prefer: 'right' | 'below' | 'nudge' = 'right'): boolean => {
+      const source = clipboardRef.current
+      if (!source) {
+        setErrorMessage(text.errors.pasteEmpty)
+        return false
+      }
+      const existing = draftSlotsRef.current
+      const position = nextPastePosition(source, existing, prefer)
+      const id = createSlotId(existing)
+      const next: PlanogramSlot = {
+        id,
+        ...source,
+        x: position.x,
+        y: position.y,
+      }
+      setDraft((previous) => ({
+        ...previous,
+        slots: [...previous.slots, next].sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id)),
+      }))
+      setSelectedSlotId(id)
+      setErrorMessage(null)
+      setStatusMessage(text.pasted)
+      return true
+    },
+    [text],
+  )
 
-  function duplicateSelectedSlot(prefer: 'right' | 'below' = 'right'): boolean {
-    const slot = selectedSlotRef.current
-    if (!slot) {
-      setErrorMessage(text.errors.copyRequiresSelection)
-      return false
-    }
-    const payload = toClipboardSlot(slot)
-    setClipboardSlot(payload)
-    clipboardRef.current = payload
-    return pasteClipboardSlot(prefer)
-  }
+  const duplicateSelectedSlot = useCallback(
+    (prefer: 'right' | 'below' = 'right'): boolean => {
+      const slot = selectedSlotRef.current
+      if (!slot) {
+        setErrorMessage(text.errors.copyRequiresSelection)
+        return false
+      }
+      const payload = toClipboardSlot(slot)
+      setClipboardSlot(payload)
+      clipboardRef.current = payload
+      return pasteClipboardSlot(prefer)
+    },
+    [text, pasteClipboardSlot],
+  )
 
   useEffect(() => {
     if (mode !== 'editor') {
@@ -745,7 +757,7 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mode, busy, text])
+  }, [mode, busy, text, copySelectedSlot, pasteClipboardSlot, duplicateSelectedSlot, deleteSelectedSlot])
 
   async function saveDraft(event: FormEvent): Promise<void> {
     event.preventDefault()

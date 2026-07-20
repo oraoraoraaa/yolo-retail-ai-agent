@@ -48,6 +48,36 @@ DEFAULT_WEIGHTS = (
 _MODEL_CACHE: dict[Path, object] = {}
 _MODEL_CACHE_LOCK = threading.Lock()
 
+# One inference lock per loaded model. ``ThreadingHTTPServer`` dispatches each
+# request on its own thread, and multi-camera background auditing means several
+# ``/detect/capture`` calls can land concurrently. They all share the SAME cached
+# model object (see ``_MODEL_CACHE``), and a single Ultralytics model is not safe
+# to call ``predict`` on from multiple threads at once. Serializing predict per
+# model keeps concurrent captures correct at the cost of running them one at a
+# time (inference is the bottleneck anyway; the GPU/CPU can only do one at once).
+_MODEL_PREDICT_LOCKS: dict[Path, threading.Lock] = {}
+
+
+def _predict_lock(weights: Path) -> threading.Lock:
+    """Return (and lazily create) the inference lock for a resolved weights path."""
+    weights = weights.expanduser().resolve()
+    with _MODEL_CACHE_LOCK:
+        lock = _MODEL_PREDICT_LOCKS.get(weights)
+        if lock is None:
+            lock = threading.Lock()
+            _MODEL_PREDICT_LOCKS[weights] = lock
+        return lock
+
+
+def predict_with_model(model: object, weights: Path, /, **predict_kwargs: Any) -> Any:
+    """Run ``model.predict`` under the per-model inference lock.
+
+    Concurrent captures against the same weights are serialized so two threads
+    never call ``predict`` on the same Ultralytics object simultaneously.
+    """
+    with _predict_lock(weights):
+        return model.predict(**predict_kwargs)  # type: ignore[attr-defined]
+
 
 def load_model(weights: Path) -> object:
     weights = weights.expanduser().resolve()
@@ -121,6 +151,13 @@ AUDIT_HISTORY_MAX_FRAMES = 18
 AUDIT_HISTORY_MAX_AGE_SECONDS = 180.0
 # Frames retained for the baseline are downscaled to this width to bound memory.
 AUDIT_HISTORY_FRAME_WIDTH = 640
+
+# Hard ceiling on a single POST body (bytes). Detect endpoints base64-decode the
+# request body into memory, so an unbounded Content-Length is an easy
+# out-of-memory / DoS vector if this port is ever reachable beyond localhost.
+# A base64 image is ~4/3 its raw size, so this comfortably fits a ~14 MiB raw
+# image while refusing absurd payloads outright. Override with MAX_REQUEST_BYTES.
+MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", str(20 * 1024 * 1024)))
 
 
 @dataclass
@@ -322,7 +359,9 @@ class DetectionStream:
                         time.sleep(min_frame_interval - elapsed)
                 last_inference_at = time.monotonic()
 
-                results = model.predict(
+                results = predict_with_model(
+                    model,
+                    options.weights,
                     source=frame,
                     imgsz=options.imgsz,
                     conf=options.conf,
@@ -671,7 +710,9 @@ def run_detection(
     else:
         clean_plate = frames[-1]
 
-    results = model.predict(
+    results = predict_with_model(
+        model,
+        options.weights,
         source=clean_plate,
         imgsz=options.imgsz,
         conf=options.conf,
@@ -884,6 +925,24 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        # Refuse oversized bodies up front: every POST here reads (and detect
+        # endpoints base64-decode) the whole body into memory, so an unbounded
+        # Content-Length is an OOM/DoS vector. Bail before reading a byte.
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            content_length = 0
+        if content_length > MAX_REQUEST_BYTES:
+            self._send_json(
+                {
+                    "error": (
+                        f"Request body exceeds the {MAX_REQUEST_BYTES} byte limit "
+                        f"({content_length} bytes)."
+                    )
+                },
+                status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            )
+            return
         if path == "/api/v1/stream/start":
             payload = self._read_json()
             try:
@@ -920,10 +979,15 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
         return values[0]
 
     def _read_json(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            length = 0
         if length <= 0:
             return {}
-        body = self.rfile.read(length)
+        # Defense-in-depth: do_POST already rejects oversized Content-Length, but
+        # never read more than the cap even if that guard is bypassed.
+        body = self.rfile.read(min(length, MAX_REQUEST_BYTES))
         return json.loads(body.decode("utf-8"))
 
     def _handle_detect_image(self) -> None:
