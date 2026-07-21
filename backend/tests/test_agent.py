@@ -473,3 +473,49 @@ def test_auth_login_and_protect(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.json()["username"] == "admin"
+
+
+def test_cors_preflight_allows_private_lan_origin() -> None:
+    """Login preflight must accept private-LAN Vite origins (not only localhost).
+
+    Regression for: OPTIONS /api/v1/auth/login → 400 "Disallowed CORS origin"
+    when the UI is opened as http://192.168.x.x:5173 (Vite --host).
+    """
+    client = TestClient(app)
+    lan_origin = "http://192.168.39.121:5173"
+    preflight = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": lan_origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert preflight.status_code == 200, preflight.text
+    assert preflight.headers.get("access-control-allow-origin") == lan_origin
+    assert "POST" in (preflight.headers.get("access-control-allow-methods") or "").upper()
+
+    # Explicitly listed origins still work.
+    local = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert local.status_code == 200
+    assert local.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+    # Non-private origins remain blocked (do not open the API to the public net by default).
+    blocked = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "https://evil.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert blocked.status_code == 400
+    assert "Disallowed CORS origin" in blocked.text
+

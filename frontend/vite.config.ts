@@ -15,12 +15,15 @@ export default defineConfig({
     },
   },
   server: {
+    // Bind all interfaces so LAN / phone testing works with `npm run dev -- --host`.
+    host: true,
     port: 5173,
     proxy: {
-      // Forward API calls to the future backend when VITE_API_BASE_URL is empty
-      // and the app uses relative `/api/...` paths.
+      // Prefer relative `/api/...` (leave VITE_API_BASE_URL empty) when the UI
+      // is opened from a LAN IP — that avoids CORS entirely because the browser
+      // talks only to Vite, which proxies to the backend.
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },

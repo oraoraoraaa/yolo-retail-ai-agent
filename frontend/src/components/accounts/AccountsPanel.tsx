@@ -7,6 +7,7 @@ import {
   updateStaffAccount,
 } from '@/api/auth'
 import { ApiError } from '@/api/client'
+import { GlassSelect } from '@/components/ui/GlassSelect'
 import type { Language, UI_TEXT } from '@/lib/i18n'
 import type { StaffAccount } from '@/types/auth'
 
@@ -311,25 +312,19 @@ export function AccountsPanel({ text, canManage, currentUserId }: AccountsPanelP
               ) : null}
             </label>
 
-            <label className={styles.field}>
-              <span>{text.role}</span>
-              <select
-                className={styles.select}
-                value={editor.role}
-                onChange={(event) =>
-                  setEditor((prev) => (prev ? { ...prev, role: event.target.value } : prev))
-                }
-              >
-                {ROLE_OPTIONS.map((role) => (
-                  <option key={role} value={role}>
-                    {roleLabel(text, role)}
-                  </option>
-                ))}
-              </select>
-              <span className={styles.hint}>
-                {(text.roleHints as Record<string, string>)[editor.role] ?? ''}
-              </span>
-            </label>
+            <GlassSelect
+              label={text.role}
+              size="compact"
+              value={editor.role}
+              options={ROLE_OPTIONS.map((role) => ({
+                value: role,
+                label: roleLabel(text, role),
+              }))}
+              onChange={(next) => setEditor((prev) => (prev ? { ...prev, role: next } : prev))}
+            />
+            <span className={styles.hint}>
+              {(text.roleHints as Record<string, string>)[editor.role] ?? ''}
+            </span>
 
             <label className={styles.checkboxField}>
               <input

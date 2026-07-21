@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { GlassSelect } from '@/components/ui/GlassSelect'
 import { LANGUAGE_LABELS, type Language } from '@/lib/i18n'
 
 import styles from './AppShell.module.css'
@@ -35,6 +36,11 @@ const PAGE_ICONS: Record<AppPageId, string> = {
   database: '▤',
   accounts: '☺',
 }
+
+const LANGUAGE_OPTIONS = (Object.keys(LANGUAGE_LABELS) as Language[]).map((option) => ({
+  value: option,
+  label: LANGUAGE_LABELS[option],
+}))
 
 export function AppShell({
   children,
@@ -94,20 +100,16 @@ export function AppShell({
         </nav>
 
         <div className={styles.sidebarFooter}>
-          <label className={styles.languageControl}>
-            <span>{languageLabel}</span>
-            <select
-              className={`${styles.languageSelect} glass-lens`}
+          <div className={styles.languageControl}>
+            <span className={styles.languageLabel}>{languageLabel}</span>
+            <GlassSelect
+              size="compact"
               value={language}
-              onChange={(event) => onLanguageChange(event.target.value as Language)}
-            >
-              {(Object.keys(LANGUAGE_LABELS) as Language[]).map((option) => (
-                <option key={option} value={option}>
-                  {LANGUAGE_LABELS[option]}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={LANGUAGE_OPTIONS}
+              onChange={(next) => onLanguageChange(next as Language)}
+              aria-label={languageLabel}
+            />
+          </div>
 
           {userLabel || onLogout ? (
             <div className={styles.userBlock}>

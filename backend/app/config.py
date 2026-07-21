@@ -43,6 +43,26 @@ def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+# Default CORS allowlist for the Vite workspace UI.
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+# Local-dev regex: any LAN/loopback host on a Vite-style port, plus optional
+# localhost variants. Explicit APP_CORS_ORIGINS still wins for allow_origins;
+# this only expands preflight acceptance for phone/LAN testing without forcing
+# allow_origins=["*"] (incompatible with allow_credentials=True).
+DEFAULT_CORS_ORIGIN_REGEX = (
+    r"^https?://("
+    r"localhost|"
+    r"127\.0\.0\.1|"
+    r"\[::1\]|"
+    r"0\.0\.0\.0|"
+    r"(10|127)(\.\d{1,3}){3}|"
+    r"192\.168(\.\d{1,3}){2}|"
+    r"172\.(1[6-9]|2\d|3[0-1])(\.\d{1,3}){2}"
+    r")(:\d+)?$"
+)
+
+
 def _resolve(path_value: str) -> Path:
     candidate = Path(path_value).expanduser()
     if candidate.is_absolute():
@@ -84,10 +104,17 @@ class Settings:
 
     cors_origins: list[str] = field(
         default_factory=lambda: _split_csv(
-            os.getenv(
-                "APP_CORS_ORIGINS",
-                "http://localhost:5173,http://127.0.0.1:5173",
-            )
+            os.getenv("APP_CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
+        )
+    )
+    # Optional regex OR'd with cors_origins. Empty string disables the regex.
+    # Default covers private LAN IPs so phone / --host testing works without
+    # hand-editing APP_CORS_ORIGINS for every DHCP address.
+    cors_origin_regex: str | None = field(
+        default_factory=lambda: (
+            raw
+            if (raw := os.getenv("APP_CORS_ORIGIN_REGEX", DEFAULT_CORS_ORIGIN_REGEX).strip())
+            else None
         )
     )
 

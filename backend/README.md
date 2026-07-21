@@ -185,9 +185,17 @@ Override with `LOCAL_VISION_MODEL` / `LOCAL_VISION_BASE_URL` in `.env`.
 
 ```bash
 # frontend/.env
-VITE_API_BASE_URL=http://localhost:8000
+# Prefer empty for local/LAN (Vite proxies /api → :8000, no CORS):
+VITE_API_BASE_URL=
+# Or call the backend directly (requires CORS allowlist / private-LAN regex):
+# VITE_API_BASE_URL=http://localhost:8000
 VITE_STREAM_BASE_URL=http://localhost:8001
 ```
+
+`APP_CORS_ORIGINS` defaults to `http://localhost:5173,http://127.0.0.1:5173`.
+A private-LAN origin regex is also enabled by default so phone testing via
+`npm run dev -- --host` works without listing every DHCP IP. Override with
+`APP_CORS_ORIGIN_REGEX` (empty disables the regex).
 
 ## Tests
 

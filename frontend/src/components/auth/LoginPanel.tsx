@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 
-import type { Language, UI_TEXT } from '@/lib/i18n'
+import { GlassSelect } from '@/components/ui/GlassSelect'
+import { LANGUAGE_LABELS, type Language, UI_TEXT } from '@/lib/i18n'
 
 import styles from './LoginPanel.module.css'
 
@@ -12,6 +13,11 @@ interface LoginPanelProps {
   errorMessage: string | null
   onSubmit: (username: string, password: string) => Promise<boolean>
 }
+
+const LANGUAGE_OPTIONS = (Object.keys(LANGUAGE_LABELS) as Language[]).map((option) => ({
+  value: option,
+  label: LANGUAGE_LABELS[option],
+}))
 
 export function LoginPanel({
   text,
@@ -47,18 +53,15 @@ export function LoginPanel({
   return (
     <div className={styles.page}>
       <div className={styles.topBar}>
-        <label className={styles.languageControl}>
-          <span className={styles.srOnly}>{languageLabel}</span>
-          <select
-            className={styles.languageSelect}
-            value={language}
-            aria-label={languageLabel}
-            onChange={(event) => onLanguageChange(event.target.value as Language)}
-          >
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-          </select>
-        </label>
+        <GlassSelect
+          size="pill"
+          fullWidth={false}
+          aria-label={languageLabel}
+          value={language}
+          options={LANGUAGE_OPTIONS}
+          onChange={(next) => onLanguageChange(next as Language)}
+          className={styles.languageControl}
+        />
       </div>
 
       <div className={styles.stage}>
@@ -103,8 +106,7 @@ export function LoginPanel({
           {displayError ? <p className={styles.error}>{displayError}</p> : null}
 
           <p className={styles.privacyNote}>
-            {text.privacyNote}{' '}
-            <span className={styles.linkish}>{text.learnMore}</span>
+            {text.privacyNote} <span className={styles.linkish}>{text.learnMore}</span>
           </p>
 
           <div className={styles.actions}>

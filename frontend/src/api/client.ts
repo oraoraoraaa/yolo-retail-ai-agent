@@ -81,10 +81,24 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(url, {
-    ...init,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers,
+    })
+  } catch (error) {
+    // Network / CORS / offline backend — browsers surface these as TypeError
+    // with no status, which the login panel would otherwise show as a generic
+    // "Sign-in failed" without any hint about connectivity.
+    const reason = error instanceof Error ? error.message : 'Network request failed'
+    throw new ApiError(
+      `Cannot reach the agent service at ${API_BASE_URL || 'the configured origin'} (${reason}). ` +
+        'If you open the UI from a LAN IP, leave VITE_API_BASE_URL empty so Vite proxies /api, ' +
+        'or add that origin to APP_CORS_ORIGINS / rely on the private-LAN CORS regex.',
+      0,
+    )
+  }
 
   if (response.status === 401) {
     // Token missing / expired / invalid — clear local session and notify the auth

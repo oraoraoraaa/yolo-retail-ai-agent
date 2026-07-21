@@ -269,12 +269,19 @@ export function useAuth() {
       void applyPermissions(result.role, result.username)
       return true
     } catch (error) {
-      const message =
-        error instanceof ApiError
-          ? error.status === 401
-            ? 'invalid'
-            : error.message
-          : 'failed'
+      // Prefer structured backend/API messages. Only collapse 401 into the
+      // i18n "invalid" key; keep connectivity / CORS detail visible so the
+      // operator can fix APP_CORS_ORIGINS / VITE_API_BASE_URL without guessing.
+      let message = 'failed'
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          message = 'invalid'
+        } else if (error.message?.trim()) {
+          message = error.message.trim()
+        }
+      } else if (error instanceof Error && error.message.trim()) {
+        message = error.message.trim()
+      }
       setState((previous) => ({
         ...previous,
         status: 'ready',

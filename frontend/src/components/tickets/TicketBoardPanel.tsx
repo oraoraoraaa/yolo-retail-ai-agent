@@ -13,6 +13,7 @@ import {
 } from '@/api/tickets'
 import { captureCameraDetection, listStreamCameras, listStreamModels } from '@/api/stream'
 import { getActivePlanogramId, matchPlanogramDetections } from '@/api/planogram'
+import { GlassSelect } from '@/components/ui/GlassSelect'
 import type { Language, UI_TEXT } from '@/lib/i18n'
 import type {
   AssigneeRole,
@@ -599,65 +600,49 @@ export function TicketBoardPanel({
             placeholder={text.searchPlaceholder}
           />
         </label>
-        <label className={styles.field}>
-          <span>{text.status}</span>
-          <select
-            className={styles.select}
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as TicketStatus | 'all')}
-          >
-            {STATUS_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {text.statusLabels[value]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={styles.field}>
-          <span>{text.priority}</span>
-          <select
-            className={styles.select}
-            value={priorityFilter}
-            onChange={(event) => setPriorityFilter(event.target.value as TicketPriority | 'all')}
-          >
-            {PRIORITY_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {text.priorityLabels[value]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={styles.field}>
-          <span>{text.issueType}</span>
-          <select
-            className={styles.select}
-            value={issueFilter}
-            onChange={(event) =>
-              setIssueFilter(event.target.value as (typeof ISSUE_OPTIONS)[number])
-            }
-          >
-            {ISSUE_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {text.issueLabels[value as keyof typeof text.issueLabels] || value}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={styles.field}>
-          <span>{text.assignee}</span>
-          <select
-            className={styles.select}
-            value={assigneeFilter}
-            onChange={(event) => setAssigneeFilter(event.target.value as AssigneeRole | 'all')}
-          >
-            <option value="all">{text.assigneeLabels.all}</option>
-            {webhookSettings.roles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {roleLabel(webhookSettings, role.id, text)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <GlassSelect
+          label={text.status}
+          size="compact"
+          value={statusFilter}
+          options={STATUS_OPTIONS.map((value) => ({
+            value,
+            label: text.statusLabels[value],
+          }))}
+          onChange={(next) => setStatusFilter(next as TicketStatus | 'all')}
+        />
+        <GlassSelect
+          label={text.priority}
+          size="compact"
+          value={priorityFilter}
+          options={PRIORITY_OPTIONS.map((value) => ({
+            value,
+            label: text.priorityLabels[value],
+          }))}
+          onChange={(next) => setPriorityFilter(next as TicketPriority | 'all')}
+        />
+        <GlassSelect
+          label={text.issueType}
+          size="compact"
+          value={issueFilter}
+          options={ISSUE_OPTIONS.map((value) => ({
+            value,
+            label: text.issueLabels[value as keyof typeof text.issueLabels] || value,
+          }))}
+          onChange={(next) => setIssueFilter(next as (typeof ISSUE_OPTIONS)[number])}
+        />
+        <GlassSelect
+          label={text.assignee}
+          size="compact"
+          value={assigneeFilter}
+          options={[
+            { value: 'all', label: text.assigneeLabels.all },
+            ...webhookSettings.roles.map((role) => ({
+              value: role.id,
+              label: roleLabel(webhookSettings, role.id, text),
+            })),
+          ]}
+          onChange={(next) => setAssigneeFilter(next as AssigneeRole | 'all')}
+        />
         <button className={`${styles.primaryButton} glass-lens`} type="submit" disabled={isLoading}>
           {text.query}
         </button>
@@ -678,25 +663,21 @@ export function TicketBoardPanel({
             </div>
           </div>
 
-          <label className={styles.field}>
-            <span>{text.activeChannel}</span>
-            <select
-              className={styles.select}
-              value={webhookSettings.activeChannel}
-              onChange={(event) =>
-                setWebhookSettings((previous) => ({
-                  ...previous,
-                  activeChannel: event.target.value as WebhookChannel,
-                }))
-              }
-            >
-              {CHANNELS.map((channel) => (
-                <option key={channel} value={channel}>
-                  {text.channelLabels[channel]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <GlassSelect
+            label={text.activeChannel}
+            size="compact"
+            value={webhookSettings.activeChannel}
+            options={CHANNELS.map((channel) => ({
+              value: channel,
+              label: text.channelLabels[channel],
+            }))}
+            onChange={(next) =>
+              setWebhookSettings((previous) => ({
+                ...previous,
+                activeChannel: next as WebhookChannel,
+              }))
+            }
+          />
 
           <div className={styles.settingsGrid}>
             {CHANNELS.map((channel) => {
@@ -841,11 +822,17 @@ export function TicketBoardPanel({
                   <span>
                     {text.roleChannel} · {role.label || role.id}
                   </span>
-                  <select
-                    className={styles.select}
+                  <GlassSelect
+                    size="compact"
                     value={webhookSettings.roleRoutes[role.id] || ''}
-                    onChange={(event) => {
-                      const value = event.target.value
+                    options={[
+                      { value: '', label: text.useActiveChannel },
+                      ...endpointOptions.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                      })),
+                    ]}
+                    onChange={(value) => {
                       setWebhookSettings((previous) => {
                         const next = { ...previous.roleRoutes }
                         if (!value) {
@@ -856,14 +843,7 @@ export function TicketBoardPanel({
                         return { ...previous, roleRoutes: next }
                       })
                     }}
-                  >
-                    <option value="">{text.useActiveChannel}</option>
-                    {endpointOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <button
                   className={`${styles.dangerButton} glass-lens`}
@@ -1115,36 +1095,31 @@ export function TicketBoardPanel({
                 <div className={styles.actionRow}>
                   <label className={styles.field}>
                     <span>{text.camera}</span>
-                    <select
-                      className={styles.select}
+                    <GlassSelect
+                      size="compact"
                       value={verifyCamera}
-                      onChange={(event) => setVerifyCamera(event.target.value)}
-                    >
-                      {(cameras.length > 0 ? cameras : [{ id: '0', label: text.cameraFallback }]).map(
-                        (camera) => (
-                          <option key={camera.id} value={camera.id}>
-                            {camera.label}
-                          </option>
-                        ),
+                      options={(cameras.length > 0 ? cameras : [{ id: '0', label: text.cameraFallback }]).map(
+                        (camera) => ({
+                          value: camera.id,
+                          label: camera.label,
+                        }),
                       )}
-                    </select>
+                      onChange={setVerifyCamera}
+                    />
                   </label>
                   <label className={styles.field}>
                     <span>{text.model}</span>
-                    <select
-                      className={styles.select}
+                    <GlassSelect
+                      size="compact"
                       value={verifyModel}
-                      onChange={(event) => setVerifyModel(event.target.value)}
-                    >
-                      {(models.length > 0
-                        ? models
-                        : [{ id: '', label: text.defaultModel }]
-                      ).map((model) => (
-                        <option key={model.id || 'default'} value={model.id}>
-                          {model.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={(models.length > 0 ? models : [{ id: '', label: text.defaultModel }]).map(
+                        (model) => ({
+                          value: model.id,
+                          label: model.label,
+                        }),
+                      )}
+                      onChange={setVerifyModel}
+                    />
                   </label>
                   <button
                     className={`${styles.primaryButton} glass-lens`}

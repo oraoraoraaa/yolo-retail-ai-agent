@@ -177,19 +177,10 @@
   font-weight: 600;
 }
 
-.languageSelect {
-  width: 100%;
-  min-height: 2.35rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 0.45rem 0.7rem;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--color-ink);
-  backdrop-filter: blur(12px);
-}
-
-.languageSelect option {
-  color: #111;
+.languageLabel {
+  color: var(--color-ink-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .userBlock {

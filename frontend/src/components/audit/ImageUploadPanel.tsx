@@ -10,6 +10,7 @@ import {
 } from '@/api'
 import { useCameraStreams } from '@/hooks/useCameraStreams'
 import type { MonitorSettings } from '@/hooks/useAuditAnalysis'
+import { GlassSelect } from '@/components/ui/GlassSelect'
 import type { Language, UI_TEXT } from '@/lib/i18n'
 import type { AuditPanelState, AuditPipelineStep } from '@/types'
 import type { Planogram } from '@/types/planogram'
@@ -394,38 +395,30 @@ export function ImageUploadPanel({
                       <span className={styles.blockId}>{`${text.cameraFallback} ${camera.id}`}</span>
                     </div>
 
-                    <label className={styles.blockField}>
-                      <span>{text.planogram}</span>
-                      <select
-                        className={styles.blockSelect}
-                        value={config.planogramId}
-                        onChange={(event) => updateConfig(camera.id, { planogramId: event.target.value })}
-                      >
-                        <option value="">{text.planogramNone}</option>
-                        {planograms.map((planogram) => (
-                          <option key={planogram.id} value={planogram.id}>
-                            {planogram.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <GlassSelect
+                      label={text.planogram}
+                      size="compact"
+                      value={config.planogramId}
+                      options={[
+                        { value: '', label: text.planogramNone },
+                        ...planograms.map((planogram) => ({
+                          value: planogram.id,
+                          label: planogram.name,
+                        })),
+                      ]}
+                      onChange={(next) => updateConfig(camera.id, { planogramId: next })}
+                    />
 
-                    <label className={styles.blockField}>
-                      <span>{text.interval}</span>
-                      <select
-                        className={styles.blockSelect}
-                        value={config.intervalMs}
-                        onChange={(event) =>
-                          updateConfig(camera.id, { intervalMs: Number(event.target.value) })
-                        }
-                      >
-                        {text.intervalOptions.map((label, index) => (
-                          <option key={label} value={INTERVAL_VALUES[index]}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <GlassSelect
+                      label={text.interval}
+                      size="compact"
+                      value={String(config.intervalMs)}
+                      options={text.intervalOptions.map((label, index) => ({
+                        value: String(INTERVAL_VALUES[index]),
+                        label,
+                      }))}
+                      onChange={(next) => updateConfig(camera.id, { intervalMs: Number(next) })}
+                    />
 
                     <div className={styles.blockActions}>
                       {canWrite ? (
@@ -559,58 +552,45 @@ export function ImageUploadPanel({
       </section>
 
       <section className={styles.controlPanel} aria-label={text.controlPanelLabel}>
-        <label className={styles.field}>
-          <span>{text.model}</span>
-          <select
-            className={styles.select}
-            value={activeConfig.model}
-            disabled={isBusy}
-            onChange={(event) => updateConfig(camera, { model: event.target.value })}
-          >
-            {models.length > 0 ? (
-              models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))
-            ) : (
-              <option value={activeConfig.model}>{activeConfig.model || text.defaultModel}</option>
-            )}
-          </select>
-        </label>
+        <GlassSelect
+          label={text.model}
+          size="compact"
+          value={activeConfig.model}
+          disabled={isBusy}
+          options={
+            models.length > 0
+              ? models.map((model) => ({ value: model.id, label: model.label }))
+              : [{ value: activeConfig.model, label: activeConfig.model || text.defaultModel }]
+          }
+          onChange={(next) => updateConfig(camera, { model: next })}
+        />
 
-        <label className={styles.field}>
-          <span>{text.planogram}</span>
-          <select
-            className={styles.select}
-            value={activeConfig.planogramId}
-            disabled={isBusy}
-            onChange={(event) => updateConfig(camera, { planogramId: event.target.value })}
-          >
-            <option value="">{text.planogramNone}</option>
-            {planograms.map((planogram) => (
-              <option key={planogram.id} value={planogram.id}>
-                {planogram.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <GlassSelect
+          label={text.planogram}
+          size="compact"
+          value={activeConfig.planogramId}
+          disabled={isBusy}
+          options={[
+            { value: '', label: text.planogramNone },
+            ...planograms.map((planogram) => ({
+              value: planogram.id,
+              label: planogram.name,
+            })),
+          ]}
+          onChange={(next) => updateConfig(camera, { planogramId: next })}
+        />
 
-        <label className={styles.field}>
-          <span>{text.interval}</span>
-          <select
-            className={styles.select}
-            value={activeConfig.intervalMs}
-            disabled={isBusy}
-            onChange={(event) => updateConfig(camera, { intervalMs: Number(event.target.value) })}
-          >
-            {text.intervalOptions.map((label, index) => (
-              <option key={label} value={INTERVAL_VALUES[index]}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <GlassSelect
+          label={text.interval}
+          size="compact"
+          value={String(activeConfig.intervalMs)}
+          disabled={isBusy}
+          options={text.intervalOptions.map((label, index) => ({
+            value: String(INTERVAL_VALUES[index]),
+            label,
+          }))}
+          onChange={(next) => updateConfig(camera, { intervalMs: Number(next) })}
+        />
 
         {canWrite ? (
           <div className={styles.monitorActions}>

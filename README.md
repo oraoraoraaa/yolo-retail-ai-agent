@@ -45,16 +45,24 @@ uv run uvicorn app.main:app --reload --port 8000
 ```bash
 cd frontend
 cp .env.example .env
-# set VITE_API_BASE_URL=http://localhost:8000
+# Recommended for local / LAN testing: leave VITE_API_BASE_URL empty so Vite
+# proxies /api → backend (same-origin, no CORS). Set an absolute origin only
+# when you intentionally call the backend directly.
+#   VITE_API_BASE_URL=http://localhost:8000
 # set VITE_STREAM_BASE_URL=http://localhost:8001
 npm install
 npm run dev
+# LAN / phone: npm run dev -- --host
 ```
 
 Open `http://localhost:5173`. When `AUTH_ENABLED=true` on the backend, the UI
 shows a login screen. The bootstrap account (default `owner` / `owner`) is
 seeded as the top-tier **owner** role — full control including account
 management. Create `admin` and `staff` users from the in-app Accounts panel.
+
+If login fails with `OPTIONS /api/v1/auth/login 400` / "Disallowed CORS origin",
+either leave `VITE_API_BASE_URL` empty (proxy path) or ensure the UI origin is
+allowed by `APP_CORS_ORIGINS` / the default private-LAN CORS regex.
 
 ## Develop
 

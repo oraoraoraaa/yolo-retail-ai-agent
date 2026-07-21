@@ -19,22 +19,7 @@
 }
 
 .languageControl {
-  display: block;
-}
-
-.languageSelect {
-  min-height: 2.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  padding: 0.35rem 0.75rem;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.875rem;
-  backdrop-filter: blur(16px);
-}
-
-.languageSelect option {
-  color: #111;
+  min-width: 7.5rem;
 }
 
 .stage {

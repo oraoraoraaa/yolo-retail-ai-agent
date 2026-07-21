@@ -45,9 +45,14 @@ app = FastAPI(
 )
 
 _settings = get_settings()
+# allow_credentials=True forbids allow_origins=["*"], so we keep an explicit
+# origin list and OR a private-network regex for LAN / phone testing.
+# Without the regex, Starlette answers OPTIONS with 400 "Disallowed CORS origin"
+# and the browser never reaches POST /api/v1/auth/login.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_settings.cors_origins,
+    allow_origin_regex=_settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
