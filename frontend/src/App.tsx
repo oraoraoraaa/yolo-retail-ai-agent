@@ -139,9 +139,14 @@ function App() {
           <ChatPanel
             text={text.chat}
             messages={chat.state.messages}
+            sessions={chat.state.sessions}
+            activeSessionId={chat.state.activeSessionId}
             status={chat.state.status}
             errorMessage={chat.state.errorMessage}
             onSendMessage={(content, attachments) => chat.sendMessage(content, attachments, language)}
+            onSelectSession={chat.selectSession}
+            onCreateSession={() => chat.createSession(language === 'zh' ? '新对话' : 'New chat')}
+            onDeleteSession={chat.deleteSession}
           />
         ) : null}
 

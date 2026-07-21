@@ -24,6 +24,7 @@ export type {
   ChatPanelState,
   ChatRequestStatus,
   ChatRole,
+  ChatSession,
 } from './chat'
 export type { DatabaseQueryParams, DatabaseQueryResult, DatabaseRecord, DatabaseRecordType } from './database'
 export type {

@@ -14,6 +14,10 @@
 }
 
 .header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
   padding: var(--space-5) var(--space-5) var(--space-4);
   border-bottom: 1px solid var(--color-line);
 }
@@ -23,6 +27,34 @@
   align-items: center;
   gap: 0.85rem;
   min-width: 0;
+}
+
+.headerCopy {
+  min-width: 0;
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.headerButton {
+  min-height: 2.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.headerButtonActive {
+  border-color: rgba(10, 132, 255, 0.45);
+  background: rgba(10, 132, 255, 0.18);
+  color: #fff;
 }
 
 .headerAvatar,
@@ -72,6 +104,143 @@
   font-size: 0.92rem;
 }
 
+.activeSessionLabel {
+  margin: 0.35rem 0 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28rem;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+}
+
+.body:has(.historyPanel) {
+  grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+}
+
+.historyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-4);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.historyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.historyTitle {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.historyNewButton {
+  min-height: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.historyEmpty {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.historyItem {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem;
+  align-items: stretch;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.historyItemActive {
+  border-color: rgba(10, 132, 255, 0.4);
+  background: rgba(10, 132, 255, 0.12);
+}
+
+.historySelect {
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0.7rem 0.75rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.historyItemTitle {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyItemMeta {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.72rem;
+}
+
+.historyDelete {
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: #ff8a80;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0 0.7rem;
+}
+
+.historyDelete:hover {
+  background: rgba(255, 69, 58, 0.12);
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -79,6 +248,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  min-height: 0;
   background:
     linear-gradient(180deg, rgba(0, 113, 227, 0.04), transparent 120px),
     transparent;
@@ -321,6 +491,25 @@
 }
 
 @media (max-width: 720px) {
+  .body:has(.historyPanel) {
+    grid-template-columns: 1fr;
+  }
+
+  .historyPanel {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    max-height: 14rem;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .composer {
     grid-template-columns: auto 1fr;
   }
