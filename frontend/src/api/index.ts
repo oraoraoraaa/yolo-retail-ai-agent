@@ -34,6 +34,7 @@ export {
 } from './planogram'
 export {
   captureCameraDetection,
+  captureCameraSnapshot,
   detectUploadedImage,
   getStreamStatus,
   getStreamStatuses,
@@ -45,6 +46,7 @@ export {
 } from './stream'
 export type { SendChatPayload, SendChatResponse } from './chat'
 export type {
+  CameraSnapshotResult,
   DetectionBox,
   DetectionResultItem,
   LocalDetectionResult,

@@ -31,6 +31,19 @@ interface PlanogramPanelProps {
   /** When false the current user is read-only (staff): hide create/edit/delete/activate. */
   canWrite?: boolean
   readOnlyNotice?: string
+  /**
+   * Optional shelf photo seed (e.g. a still taken from the live camera view).
+   * When present on mount / change, open the create editor prefilled with this image.
+   */
+  seedImage?: {
+    imageBase64: string
+    imageWidth: number
+    imageHeight: number
+    name?: string
+    description?: string
+  } | null
+  /** Called after the seed image has been consumed so the parent can clear it. */
+  onSeedImageConsumed?: () => void
 }
 
 interface DraftState {
@@ -242,7 +255,13 @@ function loadImageSize(dataUrl: string): Promise<{ width: number; height: number
   })
 }
 
-export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: PlanogramPanelProps) {
+export function PlanogramPanel({
+  text,
+  canWrite = true,
+  readOnlyNotice,
+  seedImage = null,
+  onSeedImageConsumed,
+}: PlanogramPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const [planograms, setPlanograms] = useState<Planogram[]>([])
@@ -297,6 +316,34 @@ export function PlanogramPanel({ text, canWrite = true, readOnlyNotice }: Planog
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // Seed the create editor from a camera still (or any prefilled shelf photo).
+  useEffect(() => {
+    if (!seedImage?.imageBase64) {
+      return
+    }
+    if (!canWrite) {
+      onSeedImageConsumed?.()
+      return
+    }
+    setDraft({
+      id: null,
+      name: seedImage.name?.trim() || '',
+      description: seedImage.description?.trim() || '',
+      imageBase64: seedImage.imageBase64,
+      imageWidth: seedImage.imageWidth,
+      imageHeight: seedImage.imageHeight,
+      slots: [],
+    })
+    setSelectedSlotId(null)
+    setDrawState(null)
+    setDragState(null)
+    setResizeState(null)
+    setMode('editor')
+    setStatusMessage(null)
+    setErrorMessage(null)
+    onSeedImageConsumed?.()
+  }, [seedImage, canWrite, onSeedImageConsumed])
 
   function startCreate(): void {
     setDraft(emptyDraft())

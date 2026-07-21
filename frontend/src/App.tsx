@@ -35,6 +35,13 @@ function getInitialLanguage(): Language {
 function App() {
   const [activePageId, setActivePageId] = useState<AppPageId>('audit')
   const [language, setLanguage] = useState<Language>(getInitialLanguage)
+  const [planogramSeed, setPlanogramSeed] = useState<{
+    imageBase64: string
+    imageWidth: number
+    imageHeight: number
+    name?: string
+    description?: string
+  } | null>(null)
   const auth = useAuth()
   const audit = useAuditAnalysis()
   const chat = useAgentChat()
@@ -113,7 +120,32 @@ function App() {
       onLogout={auth.authEnabled ? auth.logout : undefined}
     >
       {activePageId === 'audit' ? (
-        <ImageUploadPanel text={text.audit} language={language} audit={audit} canWrite={canWrite} />
+        <ImageUploadPanel
+          text={text.audit}
+          language={language}
+          audit={audit}
+          canWrite={canWrite}
+          onCreatePlanogramFromCapture={
+            canWrite
+              ? (payload) => {
+                  setPlanogramSeed({
+                    imageBase64: payload.imageBase64,
+                    imageWidth: payload.imageWidth,
+                    imageHeight: payload.imageHeight,
+                    name:
+                      language === 'zh'
+                        ? `摄像头 ${payload.camera} 计划图`
+                        : `Camera ${payload.camera} planogram`,
+                    description:
+                      language === 'zh'
+                        ? '从实时画面拍照创建'
+                        : 'Created from a live camera photo',
+                  })
+                  setActivePageId('planogram')
+                }
+              : undefined
+          }
+        />
       ) : null}
 
       <Suspense
@@ -122,7 +154,13 @@ function App() {
         }
       >
         {activePageId === 'planogram' ? (
-          <PlanogramPanel text={text.planogram} canWrite={canWrite} readOnlyNotice={text.readOnlyNotice} />
+          <PlanogramPanel
+            text={text.planogram}
+            canWrite={canWrite}
+            readOnlyNotice={text.readOnlyNotice}
+            seedImage={planogramSeed}
+            onSeedImageConsumed={() => setPlanogramSeed(null)}
+          />
         ) : null}
 
         {activePageId === 'tickets' ? (

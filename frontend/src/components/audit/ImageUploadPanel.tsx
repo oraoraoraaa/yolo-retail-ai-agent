@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 
 import {
+  captureCameraSnapshot,
   listPlanograms,
   listStreamCameras,
   listStreamModels,
@@ -56,6 +57,16 @@ interface ImageUploadPanelProps {
   /** When false the current user is read-only (staff): can view cameras/streams
    *  but cannot run audits or start monitoring. */
   canWrite?: boolean
+  /**
+   * Capture a clean-plate still from the live camera and hand it to the
+   * planogram editor as the shelf reference photo.
+   */
+  onCreatePlanogramFromCapture?: (payload: {
+    imageBase64: string
+    imageWidth: number
+    imageHeight: number
+    camera: string
+  }) => void
 }
 
 function isAcceptedImage(file: File): boolean {
@@ -74,7 +85,13 @@ function stepStatusLabel(text: ImageUploadPanelProps['text'], status: string): s
   return text.stepPending
 }
 
-export function ImageUploadPanel({ text, language, audit, canWrite = true }: ImageUploadPanelProps) {
+export function ImageUploadPanel({
+  text,
+  language,
+  audit,
+  canWrite = true,
+  onCreatePlanogramFromCapture,
+}: ImageUploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -92,6 +109,8 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [defaultModel, setDefaultModel] = useState('')
+  const [snapshotBusy, setSnapshotBusy] = useState(false)
+  const [snapshotPreview, setSnapshotPreview] = useState<string | null>(null)
 
   const streams = useCameraStreams()
   // Track which camera is currently streaming so switching cameras (or leaving
@@ -184,9 +203,37 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
     // Always open on the live stream, even if this camera already has a stored
     // capture from background auditing.
     setViewMode('stream')
+    setSnapshotPreview(null)
+    setLocalError(null)
     streamingCameraRef.current = cameraId
     const model = configFor(cameraId).model || defaultModel || undefined
     void streams.startCameraStream(cameraId, model)
+  }
+
+  async function takePhotoForPlanogram(camera: string): Promise<void> {
+    if (!canWrite || !onCreatePlanogramFromCapture || snapshotBusy) {
+      return
+    }
+    setSnapshotBusy(true)
+    setLocalError(null)
+    try {
+      const snapshot = await captureCameraSnapshot(camera)
+      if (!snapshot.imageBase64) {
+        throw new Error(text.snapshotFailed)
+      }
+      setSnapshotPreview(snapshot.imageBase64)
+      setViewMode('capture')
+      onCreatePlanogramFromCapture({
+        imageBase64: snapshot.imageBase64,
+        imageWidth: snapshot.image.width,
+        imageHeight: snapshot.image.height,
+        camera,
+      })
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : text.snapshotFailed)
+    } finally {
+      setSnapshotBusy(false)
+    }
   }
 
   function closeCamera(): void {
@@ -419,7 +466,9 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
   // Only show the stored still when the operator is explicitly in capture mode
   // and there is a capture to show. Otherwise the live stream is displayed —
   // this is what lets an already-audited camera open its live feed.
-  const showCapture = viewMode === 'capture' && Boolean(state.previewUrl)
+  const showCapture =
+    viewMode === 'capture' && Boolean(snapshotPreview || state.previewUrl)
+  const captureImageSrc = snapshotPreview ?? state.previewUrl
 
   const suggestedAction = state.result?.suggestedAction ?? ''
   const explanation = state.result?.explanation ?? ''
@@ -450,7 +499,7 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
           <p className={styles.subtitle}>{text.activeCameraHint}</p>
         </div>
         <div className={styles.headerControls}>
-          {state.previewUrl ? (
+          {state.previewUrl || snapshotPreview ? (
             <div className={styles.viewToggle} role="group" aria-label={text.viewToggleLabel}>
               <button
                 type="button"
@@ -479,8 +528,8 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
 
       <section className={styles.activeCamera} aria-label={text.activeCameraLabel}>
         <div className={styles.activeViewer}>
-          {showCapture && state.previewUrl ? (
-            <img className={styles.activeImage} src={state.previewUrl} alt={text.previewAlt} />
+          {showCapture && captureImageSrc ? (
+            <img className={styles.activeImage} src={captureImageSrc} alt={text.previewAlt} />
           ) : streamState.status === 'live' || streamState.status === 'starting' ? (
             <img
               key={`active-${camera}-${streamState.reloadKey}`}
@@ -587,12 +636,23 @@ export function ImageUploadPanel({ text, language, audit, canWrite = true }: Ima
               disabled={isBusy || !activeConfig.model}
               onClick={() => {
                 // Show the annotated result of this manual analysis.
+                setSnapshotPreview(null)
                 setViewMode('capture')
                 void audit.submitCameraCapture(camera, activeConfig.model, language, activeConfig.planogramId || null)
               }}
             >
               {text.analyzeNow}
             </button>
+            {onCreatePlanogramFromCapture ? (
+              <button
+                type="button"
+                className={`${styles.primaryButton} glass-lens`}
+                disabled={isBusy || snapshotBusy}
+                onClick={() => void takePhotoForPlanogram(camera)}
+              >
+                {snapshotBusy ? text.takingPhoto : text.takePhotoForPlanogram}
+              </button>
+            ) : null}
             <button
               type="button"
               className={`${styles.ghostButton} glass-lens`}

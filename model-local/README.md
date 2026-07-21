@@ -39,6 +39,7 @@ uv run main-on-screen.py --camera 0
 - `POST /api/v1/stream/stop`
 - `POST /api/v1/detect/image`
 - `POST /api/v1/detect/capture`
+- `POST /api/v1/detect/snapshot` — clean-plate still only (no detection), for planogram photos
 
 ## Temporal anti-occlusion (busy-store false positives)
 

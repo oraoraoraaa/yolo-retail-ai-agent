@@ -198,3 +198,22 @@ export async function captureCameraDetection(camera: string, model: string): Pro
     body: JSON.stringify({ camera, model }),
   })
 }
+
+/** Clean-plate still from a camera without running detection (planogram source photo). */
+export interface CameraSnapshotResult {
+  imageBase64: string
+  image: { width: number; height: number }
+  camera?: string
+  burstFrames?: number
+  baselineFrames?: number
+  escalated?: boolean
+  capturedAt?: string
+}
+
+export async function captureCameraSnapshot(camera: string): Promise<CameraSnapshotResult> {
+  return detectFetch<CameraSnapshotResult>('/snapshot', {
+    method: 'POST',
+    // burstFrames defaults server-side; no model required for a plain still.
+    body: JSON.stringify({ camera }),
+  })
+}

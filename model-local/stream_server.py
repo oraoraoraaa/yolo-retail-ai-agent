@@ -968,6 +968,8 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
             self._handle_detect_image()
         elif path == "/api/v1/detect/capture":
             self._handle_detect_capture()
+        elif path == "/api/v1/detect/snapshot":
+            self._handle_detect_snapshot()
         else:
             self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
@@ -1084,6 +1086,83 @@ class StreamRequestHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json(result)
+
+    def _handle_detect_snapshot(self) -> None:
+        """Return a clean-plate still without running the detector.
+
+        Used by the planogram editor: operators take a shelf photo from the
+        live camera view and draw facing regions on the resulting image.
+        Detection would only add boxes and latency, so this path reuses the
+        same burst/clean-plate machinery but encodes the plate as a JPEG.
+        """
+        payload = self._read_json()
+        options = parse_options(payload)
+
+        try:
+            frames: list[Any] = []
+            escalated = False
+            baseline: list[Any] = []
+
+            active = registry.get(options.camera)
+            if active is not None:
+                frames = active.recent_raw_frames(options.burst_frames)
+                if not frames:
+                    latest = active.latest_raw_frame()
+                    frames = [latest] if latest is not None else []
+                if options.use_audit_history:
+                    baseline = active.audit_history_frames()
+            else:
+                frames, escalated = capture_burst_adaptive(
+                    options.camera,
+                    options.burst_frames,
+                    options.burst_interval,
+                    max_seconds=options.burst_max_seconds,
+                )
+                if options.use_audit_history:
+                    baseline = _audit_history_store.get(options.camera)
+
+            frames = [frame for frame in frames if frame is not None]
+            if not frames:
+                raise RuntimeError("Could not capture a frame from the camera.")
+
+            plate_source = frames + [frame for frame in baseline if frame is not None]
+            native_h, native_w = frames[-1].shape[:2]
+            if len(plate_source) > 1:
+                unified = unify_frames(plate_source)
+                clean_plate = median_clean_plate(unified)
+                if clean_plate.shape[0] != native_h or clean_plate.shape[1] != native_w:
+                    clean_plate = cv2.resize(
+                        clean_plate,
+                        (native_w, native_h),
+                        interpolation=cv2.INTER_AREA,
+                    )
+            else:
+                clean_plate = frames[-1]
+
+            encoded, jpeg = cv2.imencode(".jpg", clean_plate)
+            if not encoded:
+                raise RuntimeError("Could not encode snapshot image.")
+
+            if options.use_audit_history:
+                if active is not None:
+                    active.record_audit_frame(frames[-1])
+                else:
+                    _audit_history_store.record(options.camera, frames[-1])
+
+            height, width = clean_plate.shape[:2]
+            self._send_json(
+                {
+                    "imageBase64": image_data_url(jpeg.tobytes()),
+                    "image": {"width": int(width), "height": int(height)},
+                    "camera": options.camera,
+                    "burstFrames": len(frames),
+                    "baselineFrames": len(baseline),
+                    "escalated": bool(escalated),
+                    "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            )
+        except Exception as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
     def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload).encode("utf-8")
