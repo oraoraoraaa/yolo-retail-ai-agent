@@ -552,97 +552,106 @@ export function ImageUploadPanel({
       </section>
 
       <section className={styles.controlPanel} aria-label={text.controlPanelLabel}>
-        <GlassSelect
-          label={text.model}
-          size="compact"
-          value={activeConfig.model}
-          disabled={isBusy}
-          options={
-            models.length > 0
-              ? models.map((model) => ({ value: model.id, label: model.label }))
-              : [{ value: activeConfig.model, label: activeConfig.model || text.defaultModel }]
-          }
-          onChange={(next) => updateConfig(camera, { model: next })}
-        />
+        {/* Row 1: model + planogram (equal tracks, minmax(0) so long EN/ZH labels ellipsize). */}
+        <div className={styles.controlFieldsPrimary}>
+          <GlassSelect
+            className={styles.controlField}
+            label={text.model}
+            size="compact"
+            value={activeConfig.model}
+            disabled={isBusy}
+            options={
+              models.length > 0
+                ? models.map((model) => ({ value: model.id, label: model.label }))
+                : [{ value: activeConfig.model, label: activeConfig.model || text.defaultModel }]
+            }
+            onChange={(next) => updateConfig(camera, { model: next })}
+          />
 
-        <GlassSelect
-          label={text.planogram}
-          size="compact"
-          value={activeConfig.planogramId}
-          disabled={isBusy}
-          options={[
-            { value: '', label: text.planogramNone },
-            ...planograms.map((planogram) => ({
-              value: planogram.id,
-              label: planogram.name,
-            })),
-          ]}
-          onChange={(next) => updateConfig(camera, { planogramId: next })}
-        />
+          <GlassSelect
+            className={styles.controlField}
+            label={text.planogram}
+            size="compact"
+            value={activeConfig.planogramId}
+            disabled={isBusy}
+            options={[
+              { value: '', label: text.planogramNone },
+              ...planograms.map((planogram) => ({
+                value: planogram.id,
+                label: planogram.name,
+              })),
+            ]}
+            onChange={(next) => updateConfig(camera, { planogramId: next })}
+          />
+        </div>
 
-        <GlassSelect
-          label={text.interval}
-          size="compact"
-          value={String(activeConfig.intervalMs)}
-          disabled={isBusy}
-          options={text.intervalOptions.map((label, index) => ({
-            value: String(INTERVAL_VALUES[index]),
-            label,
-          }))}
-          onChange={(next) => updateConfig(camera, { intervalMs: Number(next) })}
-        />
+        {/* Row 2: interval + action buttons. */}
+        <div className={styles.controlFieldsSecondary}>
+          <GlassSelect
+            className={styles.controlFieldInterval}
+            label={text.interval}
+            size="compact"
+            value={String(activeConfig.intervalMs)}
+            disabled={isBusy}
+            options={text.intervalOptions.map((label, index) => ({
+              value: String(INTERVAL_VALUES[index]),
+              label,
+            }))}
+            onChange={(next) => updateConfig(camera, { intervalMs: Number(next) })}
+          />
 
-        {canWrite ? (
-          <div className={styles.monitorActions}>
-            <button
-              type="button"
-              className={`${styles.primaryButton} glass-lens`}
-              disabled={isBusy || !activeConfig.model}
-              onClick={() =>
-                audit.startMonitoring(
-                  camera,
-                  activeConfig.model,
-                  activeConfig.intervalMs,
-                  language,
-                  activeConfig.planogramId || null,
-                )
-              }
-            >
-              {monitoringActive ? text.saveUpdate : text.save}
-            </button>
-            <button
-              type="button"
-              className={`${styles.ghostButton} glass-lens`}
-              disabled={isBusy || !activeConfig.model}
-              onClick={() => {
-                // Show the annotated result of this manual analysis.
-                setSnapshotPreview(null)
-                setViewMode('capture')
-                void audit.submitCameraCapture(camera, activeConfig.model, language, activeConfig.planogramId || null)
-              }}
-            >
-              {text.analyzeNow}
-            </button>
-            {onCreatePlanogramFromCapture ? (
+          {canWrite ? (
+            <div className={styles.monitorActions}>
               <button
                 type="button"
                 className={`${styles.primaryButton} glass-lens`}
-                disabled={isBusy || snapshotBusy}
-                onClick={() => void takePhotoForPlanogram(camera)}
+                disabled={isBusy || !activeConfig.model}
+                onClick={() =>
+                  audit.startMonitoring(
+                    camera,
+                    activeConfig.model,
+                    activeConfig.intervalMs,
+                    language,
+                    activeConfig.planogramId || null,
+                  )
+                }
               >
-                {snapshotBusy ? text.takingPhoto : text.takePhotoForPlanogram}
+                {monitoringActive ? text.saveUpdate : text.save}
               </button>
-            ) : null}
-            <button
-              type="button"
-              className={`${styles.ghostButton} glass-lens`}
-              disabled={!monitoringActive}
-              onClick={() => audit.stopMonitoring(camera)}
-            >
-              {text.stopMonitor}
-            </button>
-          </div>
-        ) : null}
+              <button
+                type="button"
+                className={`${styles.ghostButton} glass-lens`}
+                disabled={isBusy || !activeConfig.model}
+                onClick={() => {
+                  // Show the annotated result of this manual analysis.
+                  setSnapshotPreview(null)
+                  setViewMode('capture')
+                  void audit.submitCameraCapture(camera, activeConfig.model, language, activeConfig.planogramId || null)
+                }}
+              >
+                {text.analyzeNow}
+              </button>
+              {onCreatePlanogramFromCapture ? (
+                <button
+                  type="button"
+                  className={`${styles.primaryButton} glass-lens`}
+                  disabled={isBusy || snapshotBusy}
+                  onClick={() => void takePhotoForPlanogram(camera)}
+                >
+                  {snapshotBusy ? text.takingPhoto : text.takePhotoForPlanogram}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`${styles.ghostButton} glass-lens`}
+                disabled={!monitoringActive}
+                onClick={() => audit.stopMonitoring(camera)}
+              >
+                {text.stopMonitor}
+              </button>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       {monitoringActive ? (

@@ -768,170 +768,177 @@ export function TicketBoardPanel({
             })}
           </div>
 
-          <div className={styles.roleMap}>
+          {/* Stack: hint → card grid → add. Hint/button must not share the card grid track. */}
+          <section className={styles.roleMapSection} aria-label={text.rolesHint}>
             <p className={styles.subtitle}>{text.rolesHint}</p>
-            {webhookSettings.roles.map((role, index) => (
-              <div key={role.id || index} className={styles.endpointCard}>
-                <label className={styles.field}>
-                  <span>{text.roleId}</span>
-                  <input
-                    className={styles.input}
-                    value={role.id}
-                    onChange={(event) => {
-                      const nextId = event.target.value
-                        .trim()
-                        .toLowerCase()
-                        .replace(/\s+/g, '_')
+            <div className={styles.roleMapGrid}>
+              {webhookSettings.roles.map((role, index) => (
+                <div key={role.id || index} className={styles.roleCard}>
+                  <label className={styles.field}>
+                    <span>{text.roleId}</span>
+                    <input
+                      className={styles.input}
+                      value={role.id}
+                      onChange={(event) => {
+                        const nextId = event.target.value
+                          .trim()
+                          .toLowerCase()
+                          .replace(/\s+/g, '_')
+                        setWebhookSettings((previous) => {
+                          const roles = previous.roles.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, id: nextId } : item,
+                          )
+                          const roleRoutes = { ...previous.roleRoutes }
+                          if (role.id && role.id in roleRoutes) {
+                            roleRoutes[nextId] = roleRoutes[role.id]
+                            delete roleRoutes[role.id]
+                          }
+                          const issueRoleMap = { ...previous.issueRoleMap }
+                          for (const issue of Object.keys(issueRoleMap) as IssueType[]) {
+                            issueRoleMap[issue] = (issueRoleMap[issue] || []).map((value) =>
+                              value === role.id ? nextId : value,
+                            )
+                          }
+                          return { ...previous, roles, roleRoutes, issueRoleMap }
+                        })
+                      }}
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span>{text.roleLabel}</span>
+                    <input
+                      className={styles.input}
+                      value={role.label}
+                      onChange={(event) => {
+                        const label = event.target.value
+                        setWebhookSettings((previous) => ({
+                          ...previous,
+                          roles: previous.roles.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, label } : item,
+                          ),
+                        }))
+                      }}
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.roleRouteLabel}>
+                      {text.roleChannel} · {role.label || role.id}
+                    </span>
+                    <GlassSelect
+                      size="compact"
+                      value={webhookSettings.roleRoutes[role.id] || ''}
+                      options={[
+                        { value: '', label: text.useActiveChannel },
+                        ...endpointOptions.map((option) => ({
+                          value: option.value,
+                          label: option.label,
+                        })),
+                      ]}
+                      onChange={(value) => {
+                        setWebhookSettings((previous) => {
+                          const next = { ...previous.roleRoutes }
+                          if (!value) {
+                            delete next[role.id]
+                          } else {
+                            next[role.id] = value
+                          }
+                          return { ...previous, roleRoutes: next }
+                        })
+                      }}
+                    />
+                  </label>
+                  <button
+                    className={`${styles.dangerButton} ${styles.roleCardAction} glass-lens`}
+                    type="button"
+                    disabled={settingsBusy || webhookSettings.roles.length <= 1}
+                    onClick={() => {
                       setWebhookSettings((previous) => {
-                        const roles = previous.roles.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, id: nextId } : item,
-                        )
+                        const roles = previous.roles.filter((item) => item.id !== role.id)
                         const roleRoutes = { ...previous.roleRoutes }
-                        if (role.id && role.id in roleRoutes) {
-                          roleRoutes[nextId] = roleRoutes[role.id]
-                          delete roleRoutes[role.id]
-                        }
+                        delete roleRoutes[role.id]
                         const issueRoleMap = { ...previous.issueRoleMap }
                         for (const issue of Object.keys(issueRoleMap) as IssueType[]) {
-                          issueRoleMap[issue] = (issueRoleMap[issue] || []).map((value) =>
-                            value === role.id ? nextId : value,
-                          )
+                          const nextRoles = (issueRoleMap[issue] || []).filter((value) => value !== role.id)
+                          issueRoleMap[issue] = nextRoles.length
+                            ? nextRoles
+                            : DEFAULT_ISSUE_ROLE_MAP[issue] || ['floor_staff']
                         }
                         return { ...previous, roles, roleRoutes, issueRoleMap }
                       })
                     }}
-                  />
-                </label>
-                <label className={styles.field}>
-                  <span>{text.roleLabel}</span>
-                  <input
-                    className={styles.input}
-                    value={role.label}
-                    onChange={(event) => {
-                      const label = event.target.value
-                      setWebhookSettings((previous) => ({
-                        ...previous,
-                        roles: previous.roles.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, label } : item,
-                        ),
-                      }))
-                    }}
-                  />
-                </label>
-                <label className={styles.field}>
-                  <span>
-                    {text.roleChannel} · {role.label || role.id}
-                  </span>
-                  <GlassSelect
-                    size="compact"
-                    value={webhookSettings.roleRoutes[role.id] || ''}
-                    options={[
-                      { value: '', label: text.useActiveChannel },
-                      ...endpointOptions.map((option) => ({
-                        value: option.value,
-                        label: option.label,
-                      })),
-                    ]}
-                    onChange={(value) => {
-                      setWebhookSettings((previous) => {
-                        const next = { ...previous.roleRoutes }
-                        if (!value) {
-                          delete next[role.id]
-                        } else {
-                          next[role.id] = value
-                        }
-                        return { ...previous, roleRoutes: next }
-                      })
-                    }}
-                  />
-                </label>
-                <button
-                  className={`${styles.dangerButton} glass-lens`}
-                  type="button"
-                  disabled={settingsBusy || webhookSettings.roles.length <= 1}
-                  onClick={() => {
-                    setWebhookSettings((previous) => {
-                      const roles = previous.roles.filter((item) => item.id !== role.id)
-                      const roleRoutes = { ...previous.roleRoutes }
-                      delete roleRoutes[role.id]
-                      const issueRoleMap = { ...previous.issueRoleMap }
-                      for (const issue of Object.keys(issueRoleMap) as IssueType[]) {
-                        const nextRoles = (issueRoleMap[issue] || []).filter((value) => value !== role.id)
-                        issueRoleMap[issue] = nextRoles.length
-                          ? nextRoles
-                          : DEFAULT_ISSUE_ROLE_MAP[issue] || ['floor_staff']
-                      }
-                      return { ...previous, roles, roleRoutes, issueRoleMap }
-                    })
-                  }}
-                >
-                  {text.removeRole}
-                </button>
-              </div>
-            ))}
-            <button
-              className={`${styles.ghostButton} glass-lens`}
-              type="button"
-              onClick={() => {
-                const id = `role_${Math.random().toString(36).slice(2, 7)}`
-                setWebhookSettings((previous) => ({
-                  ...previous,
-                  roles: [...previous.roles, { id, label: text.newRoleLabel }],
-                }))
-              }}
-            >
-              {text.addRole}
-            </button>
-          </div>
-
-          <div className={styles.roleMap}>
-            <p className={styles.subtitle}>{text.issueRoleHint}</p>
-            {FIXED_ISSUE_TYPES.map((issue) => {
-              const selected = webhookSettings.issueRoleMap[issue] || DEFAULT_ISSUE_ROLE_MAP[issue] || []
-              return (
-                <div key={issue} className={styles.endpointCard}>
-                  <p className={styles.cardTitle}>
-                    {text.issueLabels[issue as keyof typeof text.issueLabels] || issue}
-                  </p>
-                  <div className={styles.badgeRow}>
-                    {webhookSettings.roles.map((role) => {
-                      const checked = selected.includes(role.id)
-                      return (
-                        <label key={role.id} className={styles.checkboxRow}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(event) => {
-                              const enabled = event.target.checked
-                              setWebhookSettings((previous) => {
-                                const current = new Set(previous.issueRoleMap[issue] || [])
-                                if (enabled) {
-                                  current.add(role.id)
-                                } else {
-                                  current.delete(role.id)
-                                }
-                                const nextRoles = Array.from(current)
-                                return {
-                                  ...previous,
-                                  issueRoleMap: {
-                                    ...previous.issueRoleMap,
-                                    [issue]: nextRoles.length
-                                      ? nextRoles
-                                      : DEFAULT_ISSUE_ROLE_MAP[issue] || [role.id],
-                                  },
-                                }
-                              })
-                            }}
-                          />
-                          <span>{roleLabel(webhookSettings, role.id, text)}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
+                  >
+                    {text.removeRole}
+                  </button>
                 </div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+            <div className={styles.roleMapFooter}>
+              <button
+                className={`${styles.ghostButton} glass-lens`}
+                type="button"
+                onClick={() => {
+                  const id = `role_${Math.random().toString(36).slice(2, 7)}`
+                  setWebhookSettings((previous) => ({
+                    ...previous,
+                    roles: [...previous.roles, { id, label: text.newRoleLabel }],
+                  }))
+                }}
+              >
+                {text.addRole}
+              </button>
+            </div>
+          </section>
+
+          <section className={styles.roleMapSection} aria-label={text.issueRoleHint}>
+            <p className={styles.subtitle}>{text.issueRoleHint}</p>
+            <div className={styles.roleMapGrid}>
+              {FIXED_ISSUE_TYPES.map((issue) => {
+                const selected = webhookSettings.issueRoleMap[issue] || DEFAULT_ISSUE_ROLE_MAP[issue] || []
+                return (
+                  <div key={issue} className={styles.roleCard}>
+                    <p className={styles.cardTitle}>
+                      {text.issueLabels[issue as keyof typeof text.issueLabels] || issue}
+                    </p>
+                    <div className={styles.badgeRow}>
+                      {webhookSettings.roles.map((role) => {
+                        const checked = selected.includes(role.id)
+                        return (
+                          <label key={role.id} className={styles.checkboxRow}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => {
+                                const enabled = event.target.checked
+                                setWebhookSettings((previous) => {
+                                  const current = new Set(previous.issueRoleMap[issue] || [])
+                                  if (enabled) {
+                                    current.add(role.id)
+                                  } else {
+                                    current.delete(role.id)
+                                  }
+                                  const nextRoles = Array.from(current)
+                                  return {
+                                    ...previous,
+                                    issueRoleMap: {
+                                      ...previous.issueRoleMap,
+                                      [issue]: nextRoles.length
+                                        ? nextRoles
+                                        : DEFAULT_ISSUE_ROLE_MAP[issue] || [role.id],
+                                    },
+                                  }
+                                })
+                              }}
+                            />
+                            <span>{roleLabel(webhookSettings, role.id, text)}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
 
           <div className={styles.actionRow}>
             <button

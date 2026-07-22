@@ -489,10 +489,58 @@
   color: var(--color-ink-muted);
 }
 
-.roleMap {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+/* Hint + footer live outside the card grid so they never share a track. */
+.roleMapSection {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
+  min-width: 0;
+  width: 100%;
+}
+
+.roleMapGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.roleCard {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px dashed rgba(10, 132, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  align-content: start;
+}
+
+.roleCard .field,
+.roleCard .input {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.roleRouteLabel {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roleCardAction {
+  width: 100%;
+  justify-self: stretch;
+}
+
+.roleMapFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
 }
 
 .verifyBox {
